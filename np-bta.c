@@ -73,53 +73,6 @@ void bta_urlNotify(NPP instance, const char* url,	NPReason reason, void* notifyD
 }
 
 ////////////////////////////////////////////////////////////
-//
-////////////////////////////////////////////////////////////
-static char prompt_result[1024];
-const char *bta_js_prompt(NPP instance, const char *message) {
-	const char *ptr=NULL;
-	char *ret=NULL;
-	NPObject *win=NULL;
-	NPVariant args[1];
-	NPVariant result;
-	NPIdentifier p = npnfuncs->getstringidentifier("prompt");
-
-	// get window
-  if( npnfuncs->getvalue(instance, NPNVWindowNPObject, &win) != NPERR_NO_ERROR )
-		return NULL;
-	
-	// STRINGZ_TO_NPVARIANT(message, args[0]);
-	args[0].type = NPVariantType_String;
-	args[0].value.stringValue.utf8length = strlen(message);
-	args[0].value.stringValue.utf8characters = message;
-
-	// popup dialog prompt
-	if( !npnfuncs->invoke(instance, win, p, args, 1, &result) ) {
-		fprintf(stderr,"NPN_Invoke on window.prompt() failed...\n");
-		npnfuncs->releaseobject(win);
-		return NULL;
-	}
-
-	//copy pin out
-	if( NPVARIANT_IS_STRING(result) ) {
-		ptr = NPVARIANT_TO_STRING(result).utf8characters;
-		strncpy(prompt_result, ptr, 1024);
-		prompt_result[1023]=0; // make sure its null terminated
-		ret=prompt_result;
-	} else if( NPVARIANT_IS_INT32(result) ) {
-		// cant possibly overflow 1024 bytes...
-		sprintf(prompt_result, "%d", NPVARIANT_TO_INT32(result));
-		ret=prompt_result;
-	}
-	npnfuncs->releasevariantvalue(&result);
-
-	// release window
-	npnfuncs->releaseobject(win);
-
-	return ret;
-}
-
-////////////////////////
 
 /* NPP */
 
@@ -133,13 +86,8 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 	const char *check=NULL;
 	float price=0.0;
 	int i=0, action=0;
-	fprintf(stderr, "np-bta: new (%x)\n", instance);
 
-	// make windowless (which defaults to transparent too)
-	//npnfuncs->setvalue(instance, NPPVpluginWindowBool, 0);
-	
 	for(i=0; i<argc; i++) {
-		//fprintf(stderr, "np-bta:   arg[%d]: '%s' => '%s'\n", i,argn[i],argv[i]);
 			if( strcmp(argn[i], "user")==0 ) {
 				site_token=argv[i];
 				bta_api_set_user(instance, site_token);
@@ -183,7 +131,7 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 
 		if( npnfuncs->getvalue(instance, (NPNVariable)18 /*NPNVprivateModeBool*/, &privateMode) == NPERR_NO_ERROR ) {
 			if( privateMode ) {
-				fprintf(stderr, "In private mode, no tracking\n");
+				logmsg("In private mode, no tracking\n");
 				return NPERR_GENERIC_ERROR;
 			}
 		}
@@ -247,21 +195,22 @@ handleEvent(NPP instance, void *ev) {
 #elif defined(WEBKIT_DARWIN_SDK)
 	if( ((NPEvent *)ev)->what==2 ) // mouseUp
 #else // X Windows
-		fprintf(stderr, "        type=%d\n", ((XEvent*)ev)->type);
 	if( ((XEvent*)ev)->type==ButtonRelease ) // dont really care which button...
 #endif
 	{
-		fprintf(stderr, "got click\n");
 		bta_api_clicked(instance);
-		return TRUE;
+		return PR_TRUE;
 	}
 
-	return FALSE;
+	return PR_FALSE;
 }
 
 static NPError /* expected by Opera */
-setWindow(NPP instance, NPWindow* pNPWindow) {
+setWindow(NPP instance, NPWindow* npwin) {
 	logmsg("np-bta: setWindow\n");
+
+	if( npwin!=NULL )	bta_sys_draw(instance, npwin);
+
 	return NPERR_NO_ERROR;
 }
 
@@ -315,7 +264,6 @@ NP_Initialize(NPNetscapeFuncs *npnf
 	NP_GetEntryPoints(nppfuncs);
 #endif
 
-	logmsg("        calling bta_api_init()\n");
 	bta_api_init(npnfuncs);
 	return NPERR_NO_ERROR;
 }

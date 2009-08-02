@@ -2,7 +2,7 @@
 
 #if defined(XULRUNNER_SDK)
 #include <npapi.h>
-#include <npupp.h>
+#include <npfunctions.h>
 #include <npruntime.h>
 #elif defined(WEBKIT_DARWIN_SDK)
 #include <Webkit/npapi.h>
@@ -60,7 +60,7 @@ void bta_api_got_pin(NPP inst, const char *pin);
 void bta_api_error(NPP inst, const char *message);
 
 void *bta_malloc(int size);
-void  bta_free(void *ptr);
+void  bta_free(void **ptr);
 
 /////////////////////////////////////////////////
 // bta_xwin.c, bta_osx.c, bta_win.c
@@ -69,11 +69,12 @@ void bta_sys_start_apithread();
 void bta_sys_stop_apithread();
 void bta_sys_close();
 
+void bta_sys_draw(NPP instance, NPWindow *npwin);
 void bta_sys_prompt(NPP instance, char *message);
+void bta_sys_error(NPP instance, char *message);
 
+int  bta_sys_is_running();
 int  bta_sys_wait_dataready();
 void bta_sys_post_dataready();
-int  bta_sys_is_running();
-
 void bta_sys_lock_dataload();
 void bta_sys_unlock_dataload();

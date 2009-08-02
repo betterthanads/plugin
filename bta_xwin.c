@@ -2,6 +2,7 @@
 // and posix threads
 
 #include <X11/cursorfont.h>
+#include <X11/Intrinsic.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -33,20 +34,26 @@
 
 #include "dialog.xpm"
 #define XFONT_STR "-*-courier-medium-r-*-*-18-*-*-*-*-*-*-*"
+#define XFONT_BUTTON_STR "-*-helvetica-*-r-*-*-12-*-*-*-*-*-*-*"
 
-struct _btap {
+struct _bta_sys {
+	Display*      display;
+	Colormap      colormap;
+	Window browser_win;
+
 	pthread_t pt;
 	XFontStruct *xfont;
-	Display *dpy;
 	Window win;
 	GC gc;
+	Atom wm_delete;
 	XColor clr[5];
 	Pixmap banner;
 	Cursor cursor[2];
+
 	char pin[256];
 	char *message;
 	NPP instance;
-} btap;
+} bta_sys;
 
 // cancel, ok buttons
 const char *buttontext[2] = { "Cancel", "OK" };
@@ -63,41 +70,41 @@ void centeredtext(int cx, int cy, const char *str) {
 	int len=strlen(str);
   int x=cx,y=cy;
 
-	y -= (btap.xfont->ascent+btap.xfont->descent)/2;
-	y += btap.xfont->ascent+1;
-	x -= XTextWidth(btap.xfont, str, len)/2;
+	y -= (bta_sys.xfont->ascent+bta_sys.xfont->descent)/2;
+	y += bta_sys.xfont->ascent+1;
+	x -= XTextWidth(bta_sys.xfont, str, len)/2;
 
-	XDrawString(btap.dpy, btap.win, btap.gc, x,y, str, len);
+	XDrawString(bta_sys.display, bta_sys.win, bta_sys.gc, x,y, str, len);
 }
 
 void descriptiontext(int tx, int ty, int wx, const char *str) {
 	int len=strlen(str);
 	int start=0;
 	int end=len, endline=0;
-	int y=ty, h = btap.xfont->ascent+btap.xfont->descent;
-	int w = XTextWidth(btap.xfont, str+start, end-start);
+	int y=ty, h = bta_sys.xfont->ascent+bta_sys.xfont->descent;
+	int w = XTextWidth(bta_sys.xfont, str+start, end-start);
 
 	y -= h/2;
-	y += btap.xfont->ascent+1;
+	y += bta_sys.xfont->ascent+1;
 
 	while( start<len ) {
 		endline=start;
 		while( str[endline]!='\n' && endline<end ) endline++;
 		if( str[endline]=='\n' ) end=endline-1;
 		else end=len;
-		w = XTextWidth(btap.xfont, str+start, end-start);
+		w = XTextWidth(bta_sys.xfont, str+start, end-start);
 
 		while( w>=wx ) {
 			while( str[end]!=' ' && start<end ) end--;
-			w = XTextWidth(btap.xfont, str+start, end-start);
+			w = XTextWidth(bta_sys.xfont, str+start, end-start);
 			end--;
 		}
 		end++;
 		if(end>len) end=len;
-		XDrawString(btap.dpy, btap.win, btap.gc, tx, y, str+start, end-start);
+		XDrawString(bta_sys.display, bta_sys.win, bta_sys.gc, tx, y, str+start, end-start);
 		start=end+1;
 		end=len;
-		w = XTextWidth(btap.xfont, str+start, end-start);
+		w = XTextWidth(bta_sys.xfont, str+start, end-start);
 
 		y += h;
 	}
@@ -108,48 +115,55 @@ void descriptiontext(int tx, int ty, int wx, const char *str) {
 int bta_sys_init(BTA_SYS_WINDOW pwin) {
 	int screen, sw, sh;
 	Window root;
-	Colormap cmap;
 	XSetWindowAttributes wa;
- 
-	btap.dpy = XOpenDisplay(NULL);
-	if( btap.dpy==NULL ) {
-		fprintf(stderr, "unable to open display!");
+	logmsg("bta_sys_init()\n");
+
+	bta_sys.display = XOpenDisplay(NULL);
+	if( bta_sys.display==NULL ) {
+		logmsg("unable to open display!");
 		return 1;
 	}
-	screen = DefaultScreen(btap.dpy);
-	root = RootWindow(btap.dpy, screen);
-	sw = DisplayWidth(btap.dpy, screen);
-	sh = DisplayHeight(btap.dpy, screen);
-	btap.cursor[0] = XCreateFontCursor(btap.dpy, XC_left_ptr);
-	btap.cursor[1] = XCreateFontCursor(btap.dpy, XC_xterm);
-	cmap = DefaultColormap(btap.dpy, screen);
-	XAllocNamedColor(btap.dpy, cmap, "#000055", &btap.clr[0], &btap.clr[0]);
-	XAllocNamedColor(btap.dpy, cmap, "#555599", &btap.clr[1], &btap.clr[1]);
-	XAllocNamedColor(btap.dpy, cmap, "#ddddff", &btap.clr[2], &btap.clr[2]);
-	XAllocNamedColor(btap.dpy, cmap, "#ffffff", &btap.clr[3], &btap.clr[3]);
+	bta_sys.browser_win=pwin;
+	screen = DefaultScreen(bta_sys.display);
+	bta_sys.colormap = DefaultColormap(bta_sys.display, screen);
 
-	btap.win = XCreateSimpleWindow(btap.dpy, root, (sw/2)-(DIALOG_WIDTH/2), (sh/2)-(DIALOG_HEIGHT/2), DIALOG_WIDTH, DIALOG_HEIGHT, 0, 0, btap.clr[3].pixel);
-	btap.gc = XCreateGC(btap.dpy, btap.win, 0, NULL);
+	root = RootWindow(bta_sys.display, screen);
+	sw = DisplayWidth(bta_sys.display, screen);
+	sh = DisplayHeight(bta_sys.display, screen);
+	bta_sys.cursor[0] = XCreateFontCursor(bta_sys.display, XC_left_ptr);
+	bta_sys.cursor[1] = XCreateFontCursor(bta_sys.display, XC_xterm);
+	XAllocNamedColor(bta_sys.display, bta_sys.colormap, "#000055", &bta_sys.clr[0], &bta_sys.clr[0]);
+	XAllocNamedColor(bta_sys.display, bta_sys.colormap, "#555599", &bta_sys.clr[1], &bta_sys.clr[1]);
+	XAllocNamedColor(bta_sys.display, bta_sys.colormap, "#ddddff", &bta_sys.clr[2], &bta_sys.clr[2]);
+	XAllocNamedColor(bta_sys.display, bta_sys.colormap, "#ffffff", &bta_sys.clr[3], &bta_sys.clr[3]);
+	XAllocNamedColor(bta_sys.display, bta_sys.colormap, "#ffcccc", &bta_sys.clr[4], &bta_sys.clr[4]);
 
-	XStoreName(btap.dpy, btap.win, "BetterThanAds - Confirm payment");
-	XSetTransientForHint(btap.dpy, btap.win, pwin);
-	XDefineCursor(btap.dpy, btap.win, btap.cursor[0]);
+	bta_sys.win = XCreateSimpleWindow(bta_sys.display, root, (sw/2)-(DIALOG_WIDTH/2), (sh/2)-(DIALOG_HEIGHT/2), DIALOG_WIDTH, DIALOG_HEIGHT, 0, 0, bta_sys.clr[3].pixel);
+	bta_sys.gc = XCreateGC(bta_sys.display, bta_sys.win, 0, NULL);
+
+	XStoreName(bta_sys.display, bta_sys.win, "BetterThanAds - Confirm payment");
+	XSetTransientForHint(bta_sys.display, bta_sys.win, bta_sys.browser_win);
+	XDefineCursor(bta_sys.display, bta_sys.win, bta_sys.cursor[0]);
 
 	// grab KeyPress, ButtonRelease, PointerMotion, ExposureMask
 	wa.event_mask= KeyPressMask|ButtonPressMask|ButtonReleaseMask|PointerMotionMask|ExposureMask;
-	XChangeWindowAttributes(btap.dpy, btap.win, CWEventMask, &wa);
+	XChangeWindowAttributes(bta_sys.display, bta_sys.win, CWEventMask, &wa);
 
 	// banner image
-	if( XpmCreatePixmapFromData(btap.dpy, btap.win, (char **)dialog_xpm, &btap.banner, NULL, NULL) ) {
-		fprintf(stderr, "pixmap load failed!");
+	if( XpmCreatePixmapFromData(bta_sys.display, bta_sys.win, (char **)dialog_xpm, &bta_sys.banner, NULL, NULL) ) {
+		logmsg("pixmap load failed!\n");
 		return 1;
 	}
 
-	if( !(btap.xfont = XLoadQueryFont(btap.dpy, XFONT_STR)) && !(btap.xfont = XLoadQueryFont(btap.dpy, "fixed"))) {
-		fprintf(stderr, "no fonts!");
+	if( !(bta_sys.xfont = XLoadQueryFont(bta_sys.display, XFONT_STR)) && !(bta_sys.xfont = XLoadQueryFont(bta_sys.display, "fixed"))) {
+		logmsg("no fonts!\n");
 		return 1;
 	}
-	XSetFont(btap.dpy, btap.gc, btap.xfont->fid);
+	XSetFont(bta_sys.display, bta_sys.gc, bta_sys.xfont->fid);
+
+	// catch close messages
+	bta_sys.wm_delete = XInternAtom(bta_sys.display, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(bta_sys.display, bta_sys.win, &bta_sys.wm_delete, 1);
 
 	return 0;
 }
@@ -162,19 +176,22 @@ void *bta_sys_thread(void *m) {
 	int z=0;
 	int over=OVER_OTHER;
 
-	fprintf(stderr, "win opened\n");
-	XMapRaised(btap.dpy, btap.win);
+	XMapRaised(bta_sys.display, bta_sys.win);
+	XFlush(bta_sys.display);
 	/////////////
 	// get pin/button
-	btap.pin[0]=0;
+	bta_sys.pin[0]=0;
 	while( !done && !unmapped ) {
-		if( XNextEvent(btap.dpy, &ev) )
+    //if( XWindowEvent(bta_sys.display, bta_sys.win, ButtonReleaseMask|PointerMotionMask|ExposureMask|KeyPressMask, &ev) )
+    //if( XWindowEvent(bta_sys.display, bta_sys.win, ~0, &ev) )
+		if( XNextEvent(bta_sys.display, &ev) )
 			break;
-
+		
 		if( ev.type==Expose ) {
 			redraw=1;
-		} else if( ev.type==UnmapNotify ) {
-			unmapped=1;
+		} else if( ev.type==ClientMessage && ev.xclient.data.l[0] == bta_sys.wm_delete ) {
+			// close / clean up nicely
+			done=-1;
 		} else if( ev.type==MotionNotify ) {
 			int lastover=over;
 			int x=ev.xmotion.x, y=ev.xmotion.y;
@@ -182,11 +199,11 @@ void *bta_sys_thread(void *m) {
 			if( x>=260 && x<=394 && y>=67 && y<=86 ) {
 				if( over!=OVER_PINBOX ) {
 					over=OVER_PINBOX;
-					XDefineCursor(btap.dpy, btap.win, btap.cursor[1]);
+					XDefineCursor(bta_sys.display, bta_sys.win, bta_sys.cursor[1]);
 				}
 			} else {
 				if( over==OVER_PINBOX )
-					XDefineCursor(btap.dpy, btap.win, btap.cursor[0]);
+					XDefineCursor(bta_sys.display, bta_sys.win, bta_sys.cursor[0]);
 				over=OVER_OTHER;
 			}
 
@@ -209,7 +226,7 @@ void *bta_sys_thread(void *m) {
 			XLookupString(&ev.xkey, key, 5, NULL,NULL);
 			switch( key[0] ) {
 				case 27: done=-1; break;
-				case '\b': if( pinlen>0 ) btap.pin[ --pinlen ]=0; break;
+				case '\b': if( pinlen>0 ) bta_sys.pin[ --pinlen ]=0; break;
 				case '\r': done=1; break;
 				case '0':
 				case '1':
@@ -221,53 +238,54 @@ void *bta_sys_thread(void *m) {
 				case '7':
 				case '8':
 				case '9':  if(pinlen==13) break; 
-									 btap.pin[pinlen++]=key[0];
-									 btap.pin[pinlen]=0;
+									 bta_sys.pin[pinlen++]=key[0];
+									 bta_sys.pin[pinlen]=0;
 									 break;
-				default:
-									 printf("got key '%s'\n", key);
 			}
 
 			redraw=1;
 		}
 
 		// can't be done if no pin
-		if( done==1 && btap.pin[0]==0 ) done=0;
+		if( done==1 && bta_sys.pin[0]==0 ) done=0;
 
 		if( done ) 
-			XUnmapWindow(btap.dpy, btap.win);
+			XUnmapWindow(bta_sys.display, bta_sys.win);
 
 		else if( redraw ) {
 			// draw banner
-			XCopyArea(btap.dpy, btap.banner, btap.win, btap.gc, 0,0, DIALOG_WIDTH, DIALOG_BANNER_HEIGHT, 0,0);
+			XCopyArea(bta_sys.display, bta_sys.banner, bta_sys.win, bta_sys.gc, 0,0, DIALOG_WIDTH, DIALOG_BANNER_HEIGHT, 0,0);
 
 			// draw pinbox
-			XSetForeground(btap.dpy, btap.gc, over==OVER_PINBOX?btap.clr[2].pixel:btap.clr[3].pixel);
-			XFillRectangles(btap.dpy, btap.win, btap.gc, &pinbox, 1);
+			if( prompt_running==2 )
+				XSetForeground(bta_sys.display, bta_sys.gc, bta_sys.clr[4].pixel);
+			else
+				XSetForeground(bta_sys.display, bta_sys.gc, over==OVER_PINBOX?bta_sys.clr[2].pixel:bta_sys.clr[3].pixel);
+			XFillRectangles(bta_sys.display, bta_sys.win, bta_sys.gc, &pinbox, 1);
 
-			XSetForeground(btap.dpy, btap.gc, btap.clr[0].pixel);
+			XSetForeground(bta_sys.display, bta_sys.gc, bta_sys.clr[0].pixel);
 			XRectangle dot= {262,74, 5,5};
 			for(z=0; z<=pinlen; z++) {
 				dot.x=262+z*10;
 				if( z!=pinlen )
-					XFillRectangles(btap.dpy, btap.win, btap.gc, &dot, 1);
+					XFillRectangles(bta_sys.display, bta_sys.win, bta_sys.gc, &dot, 1);
 				else // cursor
-					XDrawLine(btap.dpy, btap.win, btap.gc, dot.x, 71, dot.x, 83);
+					XDrawLine(bta_sys.display, bta_sys.win, bta_sys.gc, dot.x, 71, dot.x, 83);
 			}
 
 			// draw description text
-			XSetForeground(btap.dpy, btap.gc, btap.clr[0].pixel);
+			XSetForeground(bta_sys.display, bta_sys.gc, bta_sys.clr[0].pixel);
 			descriptiontext(5, 110, 434, message);
 
 			// draw buttons
-			XSetForeground(btap.dpy, btap.gc, over==OVER_CANCEL?btap.clr[1].pixel:btap.clr[0].pixel);
-			XFillRectangles(btap.dpy, btap.win, btap.gc, buttons, 1);
+			XSetForeground(bta_sys.display, bta_sys.gc, over==OVER_CANCEL?bta_sys.clr[1].pixel:bta_sys.clr[0].pixel);
+			XFillRectangles(bta_sys.display, bta_sys.win, bta_sys.gc, buttons, 1);
 
-			XSetForeground(btap.dpy, btap.gc, over==OVER_OK?btap.clr[1].pixel:btap.clr[0].pixel);
-			XFillRectangles(btap.dpy, btap.win, btap.gc, buttons+1, 1);
+			XSetForeground(bta_sys.display, bta_sys.gc, over==OVER_OK?bta_sys.clr[1].pixel:bta_sys.clr[0].pixel);
+			XFillRectangles(bta_sys.display, bta_sys.win, bta_sys.gc, buttons+1, 1);
 
 			// draw text on buttons
-			XSetForeground(btap.dpy, btap.gc, btap.clr[3].pixel);
+			XSetForeground(bta_sys.display, bta_sys.gc, bta_sys.clr[3].pixel);
 
 			centeredtext(buttons[1].x+buttons[1].width/2, buttons[1].y+buttons[1].height/2, "OK");
 			centeredtext(buttons[0].x+buttons[0].width/2, buttons[0].y+buttons[0].height/2, "Cancel");
@@ -275,71 +293,146 @@ void *bta_sys_thread(void *m) {
 			redraw=0;
 		}
 	}
-	XFlush(btap.dpy);
+	XFlush(bta_sys.display);
+	prompt_running=0;
 
 	if( done==1 ) {
-		bta_api_got_pin(btap.instance, btap.pin);
+		bta_api_got_pin(bta_sys.instance, bta_sys.pin);
 	} else {
-		bta_api_got_pin(btap.instance, "x");
+		bta_api_got_pin(bta_sys.instance, "x");
 	}
-
-	fprintf(stderr, "win closed\n");
-	prompt_running=0;
 }
 
 void bta_sys_close() {
 	if( prompt_running )
-		pthread_cancel(btap.pt);
+		pthread_cancel(bta_sys.pt);
 
-	XFreePixmap(btap.dpy, btap.banner);
-	XFreeCursor(btap.dpy, btap.cursor[1]);
-	XFreeCursor(btap.dpy, btap.cursor[0]);
-	XFreeGC(btap.dpy, btap.gc);
-	XDestroyWindow(btap.dpy, btap.win);
-	XSync(btap.dpy, True);
-	XCloseDisplay(btap.dpy);
+	XFreeColors(bta_sys.display, bta_sys.colormap, &bta_sys.clr[0].pixel, 1, 0);
+	XFreeColors(bta_sys.display, bta_sys.colormap, &bta_sys.clr[1].pixel, 1, 0);
+	XFreeColors(bta_sys.display, bta_sys.colormap, &bta_sys.clr[2].pixel, 1, 0);
+	XFreeColors(bta_sys.display, bta_sys.colormap, &bta_sys.clr[3].pixel, 1, 0);
+	XFreeColors(bta_sys.display, bta_sys.colormap, &bta_sys.clr[4].pixel, 1, 0);
+
+	XFreePixmap(bta_sys.display, bta_sys.banner);
+	XFreeFont(bta_sys.display, bta_sys.xfont);
+	XFreeCursor(bta_sys.display, bta_sys.cursor[1]);
+	XFreeCursor(bta_sys.display, bta_sys.cursor[0]);
+	XFreeGC(bta_sys.display, bta_sys.gc);
+	XDestroyWindow(bta_sys.display, bta_sys.win);
+
+	XSync(bta_sys.display, True);
+	XCloseDisplay(bta_sys.display);
 }
 
 void bta_sys_prompt(NPP instance, char *message) {
-	fprintf(stderr, "trying to open win\n");
 	if( prompt_running ) return;
 	prompt_running=1;
-	btap.instance=instance;
-	pthread_create(&btap.pt, NULL, bta_sys_thread, message);
+	bta_sys.instance=instance;
+	pthread_create(&bta_sys.pt, NULL, bta_sys_thread, message);
+}
+void bta_sys_error(NPP instance, char *message) {
+	if( prompt_running ) {
+		prompt_running=2;
+		return;
+	}
+	prompt_running=2;
+	bta_sys.instance=instance;
+	pthread_create(&bta_sys.pt, NULL, bta_sys_thread, message);
 }
 
+void _bta_sys_draw(NPWindow *npwin) {
+	Display *dpy = NULL;
+	Colormap cmap;
+	XRectangle r;
+	Window win;
+	XColor clr, white;
+	XEvent ev;
+	GC gc;
+	XFontStruct *xfont;
+	const char *str = "BTA: 25c/mo"; // TODO: get from instance...
+	int len = strlen(str);
+	int x = npwin->width/2, y = npwin->height/2;
+
+	dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
+	cmap = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->colormap;
+
+	xfont = XLoadQueryFont(dpy, XFONT_BUTTON_STR);
+	y -= (xfont->ascent+xfont->descent)/2;
+	y += xfont->ascent+1;
+	x -= XTextWidth(xfont, str, len)/2;
+
+	win=(Window)npwin->window;
+	gc = XCreateGC(dpy, win, 0, NULL);
+	XAllocNamedColor(dpy, cmap, "#000055", &clr, &clr);
+	XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
+
+	r.x      = 0; // npwin->x;
+	r.y      = 0; // npwin->y;
+	r.width  = npwin->width;
+	r.height = npwin->height;
+	
+	XSetFont(dpy, gc, xfont->fid);
+
+	XSetForeground(dpy, gc, clr.pixel);
+	XFillRectangles(dpy, win, gc, &r, 1);
+
+	XSetForeground(dpy, gc, white.pixel);
+	XDrawString(dpy, win, gc, x,y, str, len);
+
+	XFreeFont(dpy, xfont);
+	XFreeColors(dpy, cmap, &clr.pixel, 1, 0);
+	XFreeGC(dpy, gc);
+}
+
+void _bta_sys_xt_callback( Widget w, NPWindow *npwin, XEvent* ev, char* cont )  {
+	if( ev->type==Expose ) {
+		_bta_sys_draw(npwin);
+		*cont = 0;
+	} else if( ev->type==ButtonPress ) {
+		bta_api_clicked(bta_sys.instance);
+		*cont = 0;
+	} else if( ev->type==DestroyNotify) {
+		XtRemoveEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, npwin );
+		*cont = 0;
+	}
+}
+
+void bta_sys_draw(NPP instance, NPWindow *npwin) {
+	bta_sys.instance=instance;
+
+	Display *dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
+	Widget w = XtWindowToWidget(dpy, (Window)(npwin->window));
+	XtAddEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, npwin );
+}
 /////////////////////////////////////////////////////////////////////////////////////
 
 pthread_t bta_sys_pt;
-sem_t bta_sys_running, bta_sys_dataready, bta_sys_dataload;
+sem_t bta_sys_dataready, bta_sys_dataload;
+int __is_running=0;
 
 void bta_sys_start_apithread() {
-	sem_init(&bta_sys_running, 0, 1);
+	__is_running=1;
 	sem_init(&bta_sys_dataready, 0, 0);
 	sem_init(&bta_sys_dataload, 0, 1);
 	pthread_create(&bta_sys_pt, NULL, bta_api_thread, NULL);
 }
 void bta_sys_stop_apithread() {
-	sem_wait(&bta_sys_running);
+	__is_running=0;
 	sem_post(&bta_sys_dataready);
 	pthread_join(bta_sys_pt,NULL);
 	sem_destroy(&bta_sys_dataload);
 	sem_destroy(&bta_sys_dataready);
-	sem_destroy(&bta_sys_running);
+}
+
+int  bta_sys_is_running() {
+	return __is_running;
 }
 
 int  bta_sys_wait_dataready() {
 	sem_wait(&bta_sys_dataready);
 }
-
 void bta_sys_post_dataready() {
 	sem_post(&bta_sys_dataready);
-}
-
-int  bta_sys_is_running() {
-	int val=0;
-	sem_getvalue(&bta_sys_running, &val);
-	return val;
 }
 
 void bta_sys_lock_dataload() {
