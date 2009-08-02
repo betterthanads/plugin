@@ -7,8 +7,8 @@ ifeq (${shell uname}, Darwin)
 CPPFLAGS = -DVERSION=\"${VERSION}\" -DWEBKIT_DARWIN_SDK
 LDFLAGS = -dynamiclib #-framework Carbon -framework CoreFoundation -framework WebKit
 else
-#INCS = -I/usr/include/xulrunner/stable # apt-get install xulrunner-dev
-CPPFLAGS = -DVERSION=\"${VERSION}\" -DXULRUNNER_SDK -DMOZ_X11 -lXpm `pkg-config --libs --cflags mozilla-plugin`
+INCS = -I/usr/include/xulrunner-1.9/stable # apt-get install xulrunner-dev
+CPPFLAGS = -DVERSION=\"${VERSION}\" -DXULRUNNER_SDK -DMOZ_X11 -lXpm `pkg-config --libs --cflags xulrunner-plugin`
 #LDFLAGS = -L/usr/lib -lc
 LDFLAGS = -lXpm
 endif

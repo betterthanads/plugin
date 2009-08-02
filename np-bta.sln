@@ -7,12 +7,21 @@ Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Smartphone 2003 (ARMV4) = Debug|Smartphone 2003 (ARMV4)
 		Debug|Win32 = Debug|Win32
+		Firefox|Smartphone 2003 (ARMV4) = Firefox|Smartphone 2003 (ARMV4)
+		Firefox|Win32 = Firefox|Win32
+		Safari|Smartphone 2003 (ARMV4) = Safari|Smartphone 2003 (ARMV4)
+		Safari|Win32 = Safari|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Debug|Smartphone 2003 (ARMV4).ActiveCfg = Debug|Smartphone 2003 (ARMV4)
-		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Debug|Smartphone 2003 (ARMV4).Build.0 = Debug|Smartphone 2003 (ARMV4)
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Debug|Smartphone 2003 (ARMV4).ActiveCfg = Debug|Win32
 		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Debug|Win32.ActiveCfg = Debug|Win32
 		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Debug|Win32.Build.0 = Debug|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Firefox|Smartphone 2003 (ARMV4).ActiveCfg = Normal|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Firefox|Win32.ActiveCfg = Safari|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Firefox|Win32.Build.0 = Safari|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Safari|Smartphone 2003 (ARMV4).ActiveCfg = Safari|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Safari|Win32.ActiveCfg = Safari|Win32
+		{2A26E3AB-1664-4474-87A6-2EFF2C85913A}.Safari|Win32.Build.0 = Safari|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

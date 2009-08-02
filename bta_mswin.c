@@ -340,7 +340,6 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-// TODO: update for windows
 int bta_sys_init(BTA_SYS_WINDOW pwin) {
 	if( ((int)pwin)==0 || bta_sys.browser_win!=NULL ) return 0;
 	logmsg("bta_sys_init()\n");
@@ -350,7 +349,7 @@ int bta_sys_init(BTA_SYS_WINDOW pwin) {
 	bta_sys.cursor[0]=LoadCursor(NULL, IDC_ARROW);
 	bta_sys.cursor[1]=LoadCursor(NULL, IDC_IBEAM);
 
-	// create a transient dialog window, parented to pwin
+	// create a transient dialog class, parented to pwin
 	WNDCLASS wndclass;
 
 	wndclass.lpszClassName=L"BetterThanAdsPrompt";
@@ -476,10 +475,10 @@ LRESULT CALLBACK _bta_sys_draw_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LP
     { 
         case WM_PAINT: 
   		    _bta_sys_draw(hwnd);
-			return 0;
-		case WM_LBUTTONDOWN:
-			bta_api_clicked(bta_sys.instance);
-			return 0;
+					return 0;
+				case WM_LBUTTONDOWN:
+					bta_api_clicked(bta_sys.instance);
+					return 0;
     } 
     return DefWindowProc(hwnd, uMsg, wParam, lParam); 
 }

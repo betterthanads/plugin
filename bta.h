@@ -2,7 +2,7 @@
 
 #if defined(XULRUNNER_SDK)
 #include <npapi.h>
-#include <npfunctions.h>
+#include <npupp.h>
 #include <npruntime.h>
 #elif defined(WEBKIT_DARWIN_SDK)
 #include <Webkit/npapi.h>
@@ -27,6 +27,8 @@
 
 #elif defined(_WINDOWS)
 
+#define BTA_SYS_WINDOW HWND
+
 #elif defined(WEBKIT_DARWIN_SDK)
 
 #endif
@@ -44,6 +46,8 @@
 //#define BTA_API_PAGEVIEWS    "http://127.0.0.1:18080/api/pageviews/"
 //#define BTA_API_PAYMENT      "http://127.0.0.1:18080/api/payment/"
 
+void logmsg(const char *str);
+
 /////////////////////////////////////////////////
 // bta_api.c
 int  bta_api_init(NPNetscapeFuncs *npnf);
@@ -60,7 +64,7 @@ void bta_api_got_pin(NPP inst, const char *pin);
 void bta_api_error(NPP inst, const char *message);
 
 void *bta_malloc(int size);
-void  bta_free(void **ptr);
+void  bta_free(void *ptr);
 
 /////////////////////////////////////////////////
 // bta_xwin.c, bta_osx.c, bta_win.c
@@ -74,7 +78,7 @@ void bta_sys_prompt(NPP instance, char *message);
 void bta_sys_error(NPP instance, char *message);
 
 int  bta_sys_is_running();
-int  bta_sys_wait_dataready();
+void bta_sys_wait_dataready();
 void bta_sys_post_dataready();
 void bta_sys_lock_dataload();
 void bta_sys_unlock_dataload();

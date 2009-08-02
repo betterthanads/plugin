@@ -21,7 +21,7 @@ static char url_resp[ BTA_BUFFER_SIZE ];
 static NPNetscapeFuncs *npnfuncs = NULL;
 
 void logmsg(const char *msg) {
-#ifdef DEBUG
+//#ifdef DEBUG
 #ifndef _WINDOWS
 	fputs(msg, stderr);
 	fflush(stderr);
@@ -30,7 +30,7 @@ void logmsg(const char *msg) {
 	fputs(msg, out);
 	fclose(out);
 #endif
-#endif
+//#endif
 }
 
 // new stream started
@@ -199,10 +199,10 @@ handleEvent(NPP instance, void *ev) {
 #endif
 	{
 		bta_api_clicked(instance);
-		return PR_TRUE;
+		return TRUE;
 	}
 
-	return PR_FALSE;
+	return FALSE;
 }
 
 static NPError /* expected by Opera */

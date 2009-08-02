@@ -20,7 +20,7 @@
 #define API_GOT_ERROR 7
 
 static char *BTA_DATAFILE;
-static char bta_payment_posturl[ BTA_BUFFER_SIZE ];
+static char bta_payment_posturl[102400];
 static char bta_user[ BTA_ID_LENGTH+1 ];
 static char *bta_pv_buf;
 static unsigned int bta_pv_len=0;
@@ -45,6 +45,7 @@ bta_info *current_clickables = NULL;
 bta_info *current_prompt = NULL;
 bta_info message;
 char *buf=NULL;
+char current_pin[32];
 
 static NPNetscapeFuncs *npnfuncs = NULL;
 
@@ -73,48 +74,45 @@ int bta_api_init(NPNetscapeFuncs *npnf) {
 	
 	npnfuncs=npnf;
 	BTA_DATAFILE = (char *)bta_malloc(len);
-	if( BTA_DATAFILE==NULL ) return PR_FALSE;
+	if( BTA_DATAFILE==NULL ) return FALSE;
 	bta_pv_buf = (char *)bta_malloc( (BTA_ID_LENGTH+1+5)*BTA_PAGEVIEWS );
 	if( bta_pv_buf==NULL ) {
-		bta_free(&BTA_DATAFILE);
+		bta_free(BTA_DATAFILE);
 		return 1;
 	}
-	bta_pv_buf[0]=0;
 
 	sprintf(BTA_DATAFILE, "%s/%s", dir, filename);
 	logmsg("data stored in: ");
 	logmsg(BTA_DATAFILE);
 	logmsg("\n");
 
-	browser_win=NULL;
-	npnfuncs->getvalue(0, NPNVnetscapeWindow, &browser_win);
-	bta_sys_init(browser_win);
-	logmsg("sys_init finished\n");
-  bta_sys_start_apithread();
-	logmsg("api thread started\n");
-
 	bta_fp = fopen(BTA_DATAFILE, "r+");
 	if( !bta_fp ) {
-		bta_free(&bta_pv_buf);
-		bta_free(&BTA_DATAFILE);
+		bta_free(bta_pv_buf);
+		bta_free(BTA_DATAFILE);
 		return 1;
 	}
 
 	if( fscanf(bta_fp, "user=%19s", bta_user) != 1 ) {
-		bta_free(&bta_pv_buf);
-		bta_free(&BTA_DATAFILE);
+		bta_free(bta_pv_buf);
+		bta_free(BTA_DATAFILE);
 		fclose(bta_fp);
 		return 1;
 	}
 	sprintf(bta_pv_buf, "user=%19s", bta_user);
 	bta_pv_len=strlen(bta_pv_buf);
 	while( !feof(bta_fp) && bta_pv_len<BTA_BUFFER_SIZE ) {
-		bta_pv_len+=fread(bta_pv_buf+bta_pv_len, 1, BTA_BUFFER_SIZE-bta_pv_len, bta_fp);
+		int n=fread(bta_pv_buf+bta_pv_len, 1, BTA_BUFFER_SIZE-bta_pv_len, bta_fp);
+		if( n<=0 ) break;
+		bta_pv_len+=n;
 	}
 	bta_pv_buf[bta_pv_len]=0;
 	fclose(bta_fp);
-	logmsg("data file ready\n");
-	logmsg(bta_pv_buf);
+
+	browser_win=NULL;
+	//npnfuncs->getvalue(0, NPNVnetscapeWindow, &browser_win);
+	bta_sys_init(browser_win);
+    bta_sys_start_apithread();
 	return 0;
 }
 
@@ -127,22 +125,18 @@ void bta_api_close() {
 	fputs(bta_pv_buf, bta_fp);
 	fclose(bta_fp);
 
-	bta_free(&bta_pv_buf);
-	bta_free(&BTA_DATAFILE);
+	bta_free(bta_pv_buf);
+	bta_free(BTA_DATAFILE);
 
-	if( message.posturl!=NULL ) bta_free(&message.posturl);
-	if( buf!=NULL ) bta_free(&buf);
+	if( message.posturl!=NULL ) bta_free(message.posturl);
+	if( buf!=NULL ) bta_free(buf);
 }
 
 void *bta_malloc(int size) {
-	void *ptr = npnfuncs->memalloc(size);
-	fprintf(stderr, "--- malloc %d at 0x%x\n", size, ptr);
-	return ptr;
+  return npnfuncs->memalloc(size);
 }
-void bta_free(void **ptr) {
-	fprintf(stderr, "--- free 0x%x\n", *ptr);
-  npnfuncs->memfree(*ptr);
-	ptr=NULL;
+void bta_free(void *ptr) {
+  npnfuncs->memfree(ptr);
 }
 
 void *bta_api_thread(void *x) {
@@ -176,7 +170,7 @@ void *bta_api_thread(void *x) {
 		}
 		bta_sys_unlock_dataload();
 	}
-	fprintf(stderr, "thread quitting...\n");
+	return NULL;
 }
 
 static char bta_post[ BTA_BUFFER_SIZE ];
@@ -192,7 +186,7 @@ struct _post_struct {
 // posts the urlencoded-string data to url asynchronously
 void __bta_post_data(void *ptr) {
 	struct _post_struct *x = (struct _post_struct *)ptr;
-	int r=npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, PR_FALSE, ptr);
+	int r=npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, FALSE, ptr);
 	//fprintf(stderr, "posturlnotify(%x,'%s','%s',%d,'%s',false,null) error: %d\n", x->inst, x->url, x->target, x->len, x->buf, r);
 }
 
@@ -234,13 +228,13 @@ void bta_post_data(NPP inst, const char *url, const char *data) {
 
 void bta_api_gotURL(NPP inst, const char *url, char *resp, void *notifyData) {
 	struct _post_struct *x = (struct _post_struct *)notifyData;
-	bta_free(&x);
+	bta_free(x);
 
 	bta_sys_lock_dataload();
 	message.action=API_GOT_URL;
 	message.instance=inst;
 
-	if( message.posturl!=NULL ) bta_free(&message.posturl);
+	if( message.posturl!=NULL ) bta_free(message.posturl);
 	message.posturl = (char *)bta_malloc(strlen(url)+strlen(resp)+2);
 	if( message.posturl==NULL ) {
 		bta_sys_unlock_dataload();
@@ -282,7 +276,7 @@ void bta_api_payment_instance(NPP inst, const char *site, float price, NPBool re
 	strncpy(message.check, check, 33);
 	message.check[32]=0;
 
-	if( message.posturl!=NULL ) bta_free(&message.posturl);
+	if( message.posturl!=NULL ) bta_free(message.posturl);
 	message.posturl = (char *)bta_malloc(strlen(posturl)+strlen(desc)+2);
 	if( message.posturl==NULL ) {
 		bta_sys_unlock_dataload();
@@ -373,7 +367,7 @@ void _bta_api_clicked(NPP instance) {
 			return;// NPERR_GENERIC_ERROR;
 
 		sz = 250+strlen(cur->desc);
-		if( buf!=NULL ) bta_free(&buf);
+		if( buf!=NULL ) bta_free(buf);
 		buf = (char *)bta_malloc(sz);
 		if( !buf ) return;// NPERR_GENERIC_ERROR;
 		
@@ -415,7 +409,6 @@ void _bta_api_count_site(NPP inst, const char *tag) {
 
 void _bta_api_set_user(NPP inst, const char *user_token) {
 	FILE *bta_fp;
-  logmsg("bta_api_set_user\n");
 
 	if( strcmp(user_token, bta_user)==0 ) return;
 
@@ -442,7 +435,7 @@ void _bta_api_close_instance(NPP instance) {
 			if( prv==NULL ) current_clickables=cur->next;
 			else prv->next=cur->next;
 
-			bta_free(&cur);
+			bta_free(cur);
 			return;// NPERR_NO_ERROR;
 		}
 		prv=cur;
