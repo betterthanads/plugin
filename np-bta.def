@@ -1,4 +1,4 @@
-LIBRARY   npsimple.dll
+LIBRARY   np-bta.dll
 
 EXPORTS
 	NP_GetEntryPoints     @1

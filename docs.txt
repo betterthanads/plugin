@@ -1,0 +1,6 @@
+np-bta.c - init bta thread
+         - passes messages to thread
+
+bta_api.c - thread-based api functions
+
+bta_xwin.c - X Windows prompt dialog

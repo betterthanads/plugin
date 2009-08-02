@@ -1,134 +1,108 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #if defined(XULRUNNER_SDK)
 #include <npapi.h>
-#include <npupp.h>
-#include <npruntime.h>
 #elif defined(WEBKIT_DARWIN_SDK)
 #include <Webkit/npapi.h>
-#include <WebKit/npfunctions.h>
-#include <WebKit/npruntime.h>
-#define OSCALL
-#elif defined(WEBKIT_WINMOBILE_SDK) /* WebKit SDK on Windows */
-#ifndef PLATFORM
-#define PLATFORM(x) defined(x)
-#endif
-#include <npfunctions.h>
-#ifndef OSCALL
-#define OSCALL WINAPI
-#endif
 #endif
 
-#define BTA_BUFFER_SIZE 2048
+#include "bta.h"
 
-// TODO: MOVE TO https://
-#define BTA_API_USER_TOKEN   "http://betterthanads.com/api/user_token/"
-#define BTA_API_PAGEVIEWS    "http://betterthanads.com/api/pageviews/"
-#define BTA_API_PAYMENT      "http://betterthanads.com/api/payment/"
+static char *BTA_DATAFILE;
+static char *bta_payment_posturl=NULL;
+static char bta_user[ BTA_ID_LENGTH ];
+static char *bta_pv_buf;
+static unsigned int bta_pv_len=0;
 
-static char BTA_DATAFILE[2048] = "betterthanads";
-static NPNetscapeFuncs *bta_npnfuncs=NULL;
-static const char *bta_payment_posturl;
-
-void bta_init(NPNetscapeFuncs *npn) {
-	bta_npnfuncs=npn;
-
+NPBool bta_init() {
+  FILE *bta_fp = NULL;
 #ifdef _WINDOWS
-	sprintf(BTA_DATAFILE, "%s/betterthanads.dat", getenv("APPDATA"));
+	const char *filename = "betterthanads.dat";
+	char *dir = getenv("APPDATA");
 #else
-	sprintf(BTA_DATAFILE, "%s/.betterthanads", getenv("HOME"));
+	const char *filename = ".betterthanads";
+	char *dir = getenv("HOME");
 #endif
-	fprintf(stderr, "data stored in '%s'\n", BTA_DATAFILE);
+	int len = strlen(dir)+strlen(filename)+10;
+	BTA_DATAFILE = (char *)bta_malloc(len);
+	if( BTA_DATAFILE==NULL ) return FALSE;
+	bta_pv_buf = (char *)bta_malloc( (BTA_ID_LENGTH+1+5)*BTA_PAGEVIEWS );
+	if( bta_pv_buf==NULL ) {
+		bta_free(BTA_DATAFILE);
+		return FALSE;
+	}
+
+	sprintf(BTA_DATAFILE, "%s/%s", dir, filename);
+	//fprintf(stderr, "data stored in '%s'\n", BTA_DATAFILE);
+
+	bta_fp = fopen(BTA_DATAFILE, "r+");
+	if( !bta_fp ) {
+		bta_free(bta_pv_buf);
+		bta_free(BTA_DATAFILE);
+		return FALSE;
+	}
+
+	if( fscanf(bta_fp, "user=%19s", bta_user) != 1 ) {
+		bta_free(bta_pv_buf);
+		bta_free(BTA_DATAFILE);
+		fclose(bta_fp);
+		return FALSE;
+	}
+	sprintf(bta_pv_buf, "user=%19s", bta_user);
+	bta_pv_len=strlen(bta_pv_buf);
+	while( !feof(bta_fp) && bta_pv_len<BTA_BUFFER_SIZE ) {
+		bta_pv_len+=fread(bta_pv_buf+bta_pv_len, 1, BTA_BUFFER_SIZE-bta_pv_len, bta_fp);
+	}
+	bta_pv_buf[bta_pv_len]=0;
+	fclose(bta_fp);
+	return TRUE;
 }
 
-static void logmsg(const char *msg) {
-#ifdef DEBUG
-#ifndef _WINDOWS
-	fputs(msg, stderr);
-	fflush(stderr);
-#else
-	FILE *out = fopen("\\np-bta.log", "a");
-	fputs(msg, out);
-	fclose(out);
-#endif
-#endif
+void bta_close() {
+	FILE *bta_fp = fopen(BTA_DATAFILE, "r+");
+	fseek(bta_fp, 0, SEEK_SET);
+	fputs(bta_pv_buf, bta_fp);
+	fclose(bta_fp);
+
+	bta_free(bta_pv_buf);
+	bta_free(BTA_DATAFILE);
+	if( bta_payment_posturl ) bta_free(bta_payment_posturl);
 }
 
 //////////////////////////////
 // url notifications
 //////////////////////////////
 
-// posts the urlencoded-string data to url asynchronously
-void _bta_post_data(NPP inst, const char *url, const char *data, const char *target) {
-	static char bta_post[ BTA_BUFFER_SIZE ];
-	int len = data?strlen(data):0;
-	bta_post[0]=0;
-	if( len>(BTA_BUFFER_SIZE-80) ) 
-		logmsg("post data too large\n");
-	else if( data )
-		sprintf(bta_post, "Content-Type: application/x-www-form-urlencoded\nContent-Length: %d\n\n%s", len, data);
-
-	if( !url ) return;
-
-	bta_npnfuncs->posturlnotify(
-			inst, // instance
-			url,
-			target, // NULL=send response back to plugin
-			strlen(bta_post),    // length of data to send
-		  bta_post,  // data to send
-			false,  // buf is a buffer, not a file
-			NULL
-		);
-}
-void bta_post_data(NPP inst, const char *url, const char *data) {
-  _bta_post_data(inst, url, data, NULL);
-}
-
 // gets notification that url completed
 void bta_gotURL(NPP inst, const char *url, char *resp) {
-	char buf[1024];
 	logmsg("np-bta: NP_URLNotify: ");
 
 	if( !url ) return;
 	logmsg(url);
+	logmsg("\n");
 
-	if( strcmp(url, BTA_API_USER_TOKEN)==0 ) {
-		FILE *fp = fopen(BTA_DATAFILE, "r+");
-		if( !fp ) {
-			logmsg("error opening datafile\n");
-			return;
-		}
-		fprintf(fp, "user=%32s", resp);
-		fclose(fp);
-
-
-	} else if( strcmp(url, BTA_API_PAGEVIEWS)==0 ) {
+	if( strcmp(url, BTA_API_PAGEVIEWS)==0 ) {
 		if( strcmp(resp, "OK")==0 ) {
-			FILE *fp = fopen(BTA_DATAFILE, "r+");
-			if( !fp ) {
-				logmsg("error opening datafile\n");
-				return;
-			}
-			fscanf(fp, "user=%32s", buf);
-			fclose(fp);
-
-			// truncate file
-			fp = fopen(BTA_DATAFILE, "w+");
-			fprintf(fp, "user=%32s", buf);
-			fclose(fp);
-			fprintf(stderr, "Posted pageviews successfully\n");
+			// truncate file and cache
+			FILE *bta_fp = fopen(BTA_DATAFILE, "w+");
+			fprintf(bta_fp, "user=%19s", bta_user);
+			fclose(bta_fp);
+			bta_pv_buf[25]=0;
+			bta_pv_len=strlen(bta_pv_buf);
+			fprintf(stderr, "BetterThanAds: Posted pageviews successfully\n");
 		} else {
-			fprintf(stderr, "Remote Error posting pageviews: \n%s\n", resp);
+			fprintf(stderr, "BetterThanAds: Remote Error posting pageviews: \n%s\n", resp);
 		}
 
 	} else if( strcmp(url, BTA_API_PAYMENT)==0 ) {
 		if( strncmp(resp, "bta_token=", 9)==0 ) {
 			// post token to postback url
 			_bta_post_data(inst, bta_payment_posturl, resp, "_parent");
-			bta_payment_posturl=NULL;
 		} else {
 			//TODO: error dialog
+			bta_prompt_error();
 		}
 	}
 }
@@ -136,70 +110,53 @@ void bta_gotURL(NPP inst, const char *url, char *resp) {
 ////////////////////////////////////////////////////////////
 
 void bta_count_site(NPP inst, const char *tag) {
-	static char buf[ BTA_BUFFER_SIZE ];
 	static int logged=0;
-	char ttag[129], *ptr;
-	FILE *fp = fopen(BTA_DATAFILE, "r+");
-	int len=0, pos=0, count=1;
-
-	if( strlen(tag)!=32 ) return;
-	buf[0]=0;
-
-	if( !fp ) {
-		fp = fopen(BTA_DATAFILE, "w+");
-		if( !fp ) {
-			logmsg("error opening datafile\n");
-			return;
-		}
-		fprintf(fp, "user=BEEFBEEFBEEFBEEFBEEFBEEFBEEFBEEF");
-		fclose(fp);
-		
-		bta_post_data(inst, BTA_API_USER_TOKEN, buf);
-	  
-		fp = fopen(BTA_DATAFILE, "r+");
+	char *ptr, last;
+	int pos=0, count=1;
+	
+	if( strlen(tag)!=19 ) return;
+	
+	ptr=strstr(bta_pv_buf, tag);
+	if( ptr==NULL ) {
+		sprintf(bta_pv_buf+bta_pv_len, "&%19s=%05d", tag, 1);
+		bta_pv_len=strlen(bta_pv_buf);
+	}	else {
+		pos=ptr-bta_pv_buf+20;
+		last=bta_pv_buf[pos+5];
+		sscanf(bta_pv_buf+pos, "%05d", &count);
+		sprintf(bta_pv_buf+pos, "%05d", count+1);
+		bta_pv_buf[pos+5]=last;
 	}
 	
-	buf[0]=0;
-	while( !feof(fp) && len<BTA_BUFFER_SIZE ) {
-		len=fread(buf+len, 1, BTA_BUFFER_SIZE-len, fp);
-	}
-	buf[len]=0;
-
-	ptr=strstr(buf, tag);
-	if( ptr==NULL ) pos=-1;
-	else pos=ptr-buf;
-
-	if( pos>0 ) {
-		sscanf(buf+pos, "%32s=%5d", ttag, &count);
-		fseek(fp, pos+33, SEEK_SET);
-		fprintf(fp, "%05d", count+1);
-		sprintf(buf+pos, "%05d", count+1);
-	} else {
-		fprintf(fp, "&%32s=%05d", tag, count);
-		sprintf(buf+strlen(buf), "&%32s=%05d", tag, count);
-	}
-
-	fclose(fp);
-	
-	if( ((logged++)%100)==0 || strlen(buf) > (BTA_BUFFER_SIZE-128) ) {
-		bta_post_data(inst, BTA_API_PAGEVIEWS, buf);
+	if( ((logged++)%BTA_PAGEVIEWS)==0 ) {
+		bta_post_data(inst, BTA_API_PAGEVIEWS, bta_pv_buf);
 	}
 }
 
-void bta_do_payment(NPP inst, const char *site, const char *pin, float price, bool recurring, const char *posturl) {
-	static char buf[ BTA_BUFFER_SIZE ];
-	char user_token[128];
-	FILE *fp = fopen(BTA_DATAFILE, "r+");
-	if( !fp ) {
+static char __api_buf[ BTA_BUFFER_SIZE ];
+void bta_do_payment(NPP inst, const char *site, const char *pin, float price, NPBool recurring, const char *posturl, const char *description, const char *check) {
+
+	__api_buf[0]=0;
+	if( bta_payment_posturl ) bta_free(bta_payment_posturl);
+	bta_payment_posturl=(char*)bta_malloc(strlen(posturl));
+	strcpy(bta_payment_posturl, posturl);
+	sprintf(__api_buf, "site=%19s&user=%19s&pin=%s&price=%3.2f&check=%32s&type=%s&description=%s", site, bta_user, pin, price, check, recurring?"subscription":"payment", description);
+	bta_post_data(inst, BTA_API_PAYMENT, __api_buf);
+}
+
+void bta_set_user(NPP inst, const char *user_token) {
+	FILE *bta_fp;
+
+	if( strcmp(user_token, bta_user)==0 ) return;
+
+	bta_fp = fopen(BTA_DATAFILE, "w");
+	if( !bta_fp ) {
 		logmsg("error opening datafile\n");
 		return;
 	}
-	fscanf(fp, "user=%32s", user_token);
-	fclose(fp);
-
-	buf[0]=0;
-	sprintf(buf, "site=%32s&user=%32s&pin=%s&price=%3.2f&type=%s", site, user_token, pin, price, recurring?"subscription":"payment");
-	bta_payment_posturl=posturl;
-	bta_post_data(inst, BTA_API_PAYMENT, buf);
+	fprintf(bta_fp, "user=%19s", user_token);
+	fclose(bta_fp);
+	strcpy(bta_user, user_token);
+	sprintf(bta_pv_buf, "user=%19s", user_token);
+	bta_pv_len=strlen(bta_pv_buf);
 }
-

@@ -50,16 +50,16 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", " Aplix Corporation"
+            VALUE "CompanyName", "Better Than Ads"
             VALUE "FileDescription", "0.3"
-            VALUE "FileExtents", "foo"
-            VALUE "FileOpenName", "Aplix Foo Plugin"
+            VALUE "FileExtents", "bta"
+            VALUE "FileOpenName", "BetterThanAdsPlugin"
             VALUE "FileVersion", "1, 0, 0, 1"
-            VALUE "InternalName", "AplixFooPlugin"
-            VALUE "LegalCopyright", "Copyright 2008 Aplix Corporation."
-            VALUE "MIMEType", "application/x-vnd-aplix-foo"
-            VALUE "OriginalFilename", "npsimple.dll"
-            VALUE "ProductName", "Aplix Foo Plugin"
+            VALUE "InternalName", "BetterThanAdsPlugin"
+            VALUE "LegalCopyright", "Copyright 2009 BetterThanAds."
+            VALUE "MIMEType", "application/x-vnd-betterthanads-bta"
+            VALUE "OriginalFilename", "np-bta.dll"
+            VALUE "ProductName", "BetterThanAdsPlugin"
             VALUE "ProductVersion", "1, 0, 0, 3"
         END
     END
