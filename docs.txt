@@ -1,6 +1,94 @@
-np-bta.c - init bta thread
-         - passes messages to thread
+-------------------------
+-- npapi functions
+-------------------------
 
-bta_api.c - thread-based api functions
+npapi -> bta_xwin init
+         bta_api init         
+         while( browser running ) {
+				   events:
+				     instance created -> pass parameters to api
+					   instance clicked -> tell api
+						 instance closed  -> tell api
+					 stream functions:
+					   received data -> send to api
+				 }
+         bta_api close
+				 bta_xwin close
 
-bta_xwin.c - X Windows prompt dialog
+---------------------------------
+-- all bta-specific functions:
+--   api calls, tracking
+---------------------------------
+
+bta_api -> init:
+             save npnfunc ptr
+						 alloc memory
+						 bta_xwin create_mutexes (running, dataload, dataready)
+						 bta_xwin start_thread
+
+					 thread:
+					   bta_xwin init
+						 thread loop:
+						   wait_dataready
+							 if not running break
+					     get new message, call handlers appropriately
+						 bta_xwin_close
+					   
+					 close:
+					   send stop to thread
+						 join thread
+					   free mem, mutexes
+
+					 (messages):
+					   lock dataload
+						   copy message to buffer
+						 unlock dataload
+						 post data ready
+
+-------------------------------------
+--  all system-specific functions:
+--    threads, mutexes, windows
+-------------------------------------
+
+bta_mswin,
+bta_macos, 
+bta_xwin -> init:
+              connect to display
+							alloc mem
+							load pixmap,fonts,colors,etc.
+
+						prompt:
+							start window thread
+
+						thread:
+						  map window
+							event loop:
+							  react to events
+							send results to bta_api
+							unmap window
+
+						close:
+						  free pixmap,fonts,colors,etc
+							free mem
+							close display
+
+						(pthread wrappers)
+							start_thread
+								create semaphore dataready = 0
+								create semaphore running = 1
+								create mutex dataload
+								starts thread
+
+							stop_thread
+								decrement semaphore running
+								post_dataready
+								joins thread
+								kills mutexes
+
+							is_running
+							  return value == 1
+
+							wait_dataready
+							post_dataready
+
+							un/lock_dataload

@@ -13,50 +13,12 @@
   #include <X11/Xlib.h>
 #endif
 
-#if defined(XULRUNNER_SDK)
-#include <npapi.h>
-#include <npupp.h>
-#include <npruntime.h>
-#elif defined(WEBKIT_DARWIN_SDK)
-#include <Webkit/npapi.h>
-#include <WebKit/npfunctions.h>
-#include <WebKit/npruntime.h>
-#define OSCALL
-#elif defined(WEBKIT_WINMOBILE_SDK) /* WebKit SDK on Windows */
-#ifndef PLATFORM
-#define PLATFORM(x) defined(x)
-#endif
-#include <npfunctions.h>
-#ifndef OSCALL
-#define OSCALL WINAPI
-#endif
-#endif
-
 #include "bta.h"
 
 ///////////////////////////////////////////
 
-typedef struct _bta_info {
-	NPP instance;
-	int type;   // 1=subscription, 2=payment
-	char *site;
-	char *check;
-	char *posturl;
-	char *desc;
-	float price;
-
-	struct _bta_info *next;
-} bta_info;
-
-bta_info *current_clickables = NULL;
-bta_info *current_prompt = NULL;
-char *buf=NULL;
-char current_pin[32];
-bool bta_ready=false;
-NPP a_inst=0;
-
-static NPNetscapeFuncs *npnfuncs = NULL;
 static char url_resp[ BTA_BUFFER_SIZE ];
+static NPNetscapeFuncs *npnfuncs = NULL;
 
 void logmsg(const char *msg) {
 #ifdef DEBUG
@@ -69,34 +31,6 @@ void logmsg(const char *msg) {
 	fclose(out);
 #endif
 #endif
-}
-
-// posts the urlencoded-string data to url asynchronously
-void _bta_post_data(NPP inst, const char *url, const char *data, const char *target) {
-	static char bta_post[ BTA_BUFFER_SIZE ];
-	int len = data?strlen(data):0;
-	bta_post[0]=0;
-	if( len>(BTA_BUFFER_SIZE-80) ) 
-		logmsg("post data too large\n");
-	else if( data )
-		sprintf(bta_post, "Content-Type: application/x-www-form-urlencoded\nContent-Length: %d\n\n%s", len, data);
-
-	if( !url ) return;
-	fprintf(stderr, "URL: %s\nPOST: %s\n", url, bta_post);
-
-	npnfuncs->posturlnotify(
-			inst, // instance
-			url,
-			target, // NULL=send response back to plugin
-			strlen(bta_post),    // length of data to send
-		  bta_post,  // data to send
-			false,  // bta_post is a buffer, not a file
-			NULL
-		);
-}
-
-void bta_post_data(NPP inst, const char *url, const char *data) {
-  _bta_post_data(inst, url, data, NULL);
 }
 
 // new stream started
@@ -118,11 +52,13 @@ static NPError bta_destroyStream(NPP instance, NPStream* stream, NPReason reason
 
 // how much data can we take?
 static int32 bta_writeReady(NPP instance, NPStream* stream) {
+	logmsg("np-bta: NPP_WriteReady\n");
 	return BTA_BUFFER_SIZE;
 }
 
 // take some data from the stream
 int32 bta_write(NPP instance, NPStream* stream, int32 offset, int32 len, void* dbuf) {
+	logmsg("np-bta: NPP_Write\n");
 	// yup, it overwrites. none of the api calls should return very much anyway.
 	if( len>=BTA_BUFFER_SIZE ) len=BTA_BUFFER_SIZE;
 	memcpy(url_resp, ((char *)dbuf)+offset, len);
@@ -133,14 +69,7 @@ int32 bta_write(NPP instance, NPStream* stream, int32 offset, int32 len, void* d
 // url notifications
 void bta_urlNotify(NPP instance, const char* url,	NPReason reason, void* notifyData) {
 	logmsg("np-bta: NPP_URLNotify\n");
-	bta_gotURL(instance, url, url_resp);
-}
-
-void *bta_malloc(int size) {
-  return npnfuncs->memalloc(size);
-}
-void bta_free(void *ptr) {
-  npnfuncs->memfree(ptr);
+	bta_api_gotURL(instance, url, url_resp, notifyData);
 }
 
 ////////////////////////////////////////////////////////////
@@ -190,36 +119,6 @@ const char *bta_js_prompt(NPP instance, const char *message) {
 	return ret;
 }
 
-///////////////////////
-
-void _bta_prompt_gotpin_async(const char *pin) {
-	if( pin!=NULL )
-		bta_do_payment(current_prompt->instance, current_prompt->site, pin, current_prompt->price, current_prompt->type==1, current_prompt->posturl, current_prompt->desc, current_prompt->check);
-	current_prompt=NULL;
-}
-void _bta_prompt_gotpin(const char *pin) {
-	fprintf(stderr, "xxx\n");
-	fprintf(stderr, "got pin: '%s'\n", pin);
-  _bta_prompt_gotpin_async(pin);
-	// npnfuncs->pluginthreadasynccall(current_prompt->instance, bta_prompt_gotpin_async, pin);
-	fprintf(stderr, "yyy\n");
-}
-
-void bta_prompt_getpin(void *x) {
-	const char *pin = bta_prompt_result;
-	fprintf(stderr, "got pin: '%s'\n", pin);
-	if( pin!=NULL )
-		bta_do_payment(current_prompt->instance, current_prompt->site, pin, current_prompt->price, current_prompt->type==1, current_prompt->posturl, current_prompt->desc, current_prompt->check);
-	current_prompt=NULL;
-}
-void bta_prompt_gotpin(const char *pin) {
-	//npnfuncs->pluginthreadasynccall(current_prompt->instance, bta_prompt_getpin, NULL);
-	bta_prompt_getpin(NULL);
-}
-void bta_prompt_error() {
-	fprintf(stderr, "payment error\n");
-}
-
 ////////////////////////
 
 /* NPP */
@@ -234,25 +133,20 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 	const char *check=NULL;
 	float price=0.0;
 	int i=0, action=0;
-	logmsg("np-bta: new\n");
+	fprintf(stderr, "np-bta: new (%x)\n", instance);
 
 	// make windowless (which defaults to transparent too)
-	npnfuncs->setvalue(instance, NPPVpluginWindowBool, 0);
+	//npnfuncs->setvalue(instance, NPPVpluginWindowBool, 0);
 	
 	for(i=0; i<argc; i++) {
 		//fprintf(stderr, "np-bta:   arg[%d]: '%s' => '%s'\n", i,argn[i],argv[i]);
-	  if( !bta_ready ) {	
 			if( strcmp(argn[i], "user")==0 ) {
 				site_token=argv[i];
-				bta_set_user(instance, site_token);
-				a_inst=instance;
+				bta_api_set_user(instance, site_token);
 				npnfuncs->reloadplugins(true);
 				return NPERR_NO_ERROR;
 			}
-		} else {
-			if( strcmp(argn[i], "user")==0 )
-				return NPERR_NO_ERROR;
-
+			
 			if( strcmp(argn[i], "domain")==0 ) // TODO: remove me sometime
 				domain=argv[i];
 
@@ -271,15 +165,7 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 				if( strcmp(argv[i], "subscription")==0 ) action=1;
 				if( strcmp(argv[i], "payment")==0 ) action=2;
 			}
-		}
 
-	}
-	if( !bta_ready ) {
-		if( a_inst==0 ) {
-			npnfuncs->geturl(instance, "http://betterthanads.com/107e4535fb8c1f1ac38be682088dd441/plugin/activate", "_blank");
-			a_inst=instance;
-		}
-		return NPERR_NO_ERROR;
 	}
 
 	if( site_token==NULL )
@@ -302,34 +188,12 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 			}
 		}
 		
-		bta_count_site(instance, site_token);
+		bta_api_count_site(instance, site_token);
 
 	} else if( (action==1 || action==2) && price>0.0 && posturl!=NULL && check!=NULL ) { 
-		// put it all in one block
-		int sz = sizeof(bta_info)+strlen(check)+strlen(posturl)+strlen(desc)+128;
-		char *ptr = (char *)bta_malloc( sz );
-		bta_info *nbta = (bta_info *)ptr;
-		ptr+=sizeof(bta_info);
 
-		nbta->instance=instance;
-		nbta->type=action;
-		nbta->price=price;
-		nbta->site=ptr;
-		  strcpy(nbta->site, site_token);
-			ptr+=1+strlen(site_token);
-		nbta->check=ptr;
-		  strcpy(nbta->check, check);
-			ptr+=1+strlen(check);
-		nbta->posturl=ptr;
-		  strcpy(nbta->posturl, posturl);
-			ptr+=1+strlen(posturl);
-		nbta->desc=ptr;
-		  strcpy(nbta->desc, desc);
-			ptr+=1+strlen(desc);
-
-		nbta->next=current_clickables;
-		current_clickables=nbta;
-
+		bta_api_payment_instance(instance, site_token, price, action==1, posturl, desc, check);
+	
 	} else {
 		return NPERR_GENERIC_ERROR;
 	}
@@ -339,23 +203,8 @@ nevv(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[],
 
 static NPError
 destroy(NPP instance, NPSavedData **save) {
-	bta_info *prv = (bta_info *)NULL;
-	bta_info *cur = current_clickables;
 	logmsg("np-bta: destroy\n");
-		
-	while( cur!=NULL ) {
-		if( cur->instance==instance ) {
-			if( prv==NULL ) current_clickables=cur->next;
-			else prv->next=cur->next;
-
-			bta_free(cur);
-			return NPERR_NO_ERROR;
-		}
-		prv=cur;
-		cur=cur->next;
-	}
-
-	if( buf ) bta_free(buf);
+	bta_api_close_instance(instance);
 	return NPERR_NO_ERROR;
 }
 
@@ -391,46 +240,23 @@ getValue(NPP instance, NPPVariable variable, void *value) {
 static NPError /* expected by Safari on Darwin */
 handleEvent(NPP instance, void *ev) {
 	int sz=0;
-	//logmsg("np-bta: handleEvent\n");
+	logmsg("np-bta: handleEvent\n");
 
 #if defined(_WINDOWS)
 	if( ((NPEvent *)ev)->event==WM_LBUTTONUP  )
 #elif defined(WEBKIT_DARWIN_SDK)
 	if( ((NPEvent *)ev)->what==2 ) // mouseUp
 #else // X Windows
-	Window ff_win;
-
+		fprintf(stderr, "        type=%d\n", ((XEvent*)ev)->type);
 	if( ((XEvent*)ev)->type==ButtonRelease ) // dont really care which button...
 #endif
 	{
-		bta_info *cur = current_clickables;
-		while( cur!=NULL ) {
-			if( cur->instance==instance ) break;
-			cur=cur->next;
-		}
-		if( cur==NULL )
-			return NPERR_NO_ERROR;
-		if( current_prompt!=NULL )
-			return NPERR_GENERIC_ERROR;
-
-		sz = 250+strlen(cur->desc);
-		if( buf ) bta_free(buf);
-		buf = (char *)bta_malloc(sz);
-		if( !buf ) return NPERR_GENERIC_ERROR;
-		
-		sprintf(buf, "I will pay $%3.2f%s for the following:\n\n%s",
-				    cur->price, cur->type==1?"/mo":"", cur->desc);
-
-		npnfuncs->getvalue(instance, NPNVnetscapeWindow, &ff_win);
-
-		current_prompt = cur;
-		if( bta_prompt(buf, &ff_win)!=0 ) {
-			current_prompt=NULL;
-		}
-		return 1;
+		fprintf(stderr, "got click\n");
+		bta_api_clicked(instance);
+		return TRUE;
 	}
 
-	return NPERR_NO_ERROR;
+	return FALSE;
 }
 
 static NPError /* expected by Opera */
@@ -489,14 +315,15 @@ NP_Initialize(NPNetscapeFuncs *npnf
 	NP_GetEntryPoints(nppfuncs);
 #endif
 
-	bta_ready = bta_init();
+	logmsg("        calling bta_api_init()\n");
+	bta_api_init(npnfuncs);
 	return NPERR_NO_ERROR;
 }
 
 NPError
 OSCALL NP_Shutdown() {
 	logmsg("np-bta: NP_Shutdown\n");
-	if(bta_ready) bta_close();
+	bta_api_close();
 	return NPERR_NO_ERROR;
 }
 

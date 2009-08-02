@@ -1,4 +1,5 @@
 // X Windows prompt dialog
+// and posix threads
 
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
@@ -13,10 +14,7 @@
 #include <string.h>
 
 #include <pthread.h>
-
-#include <npapi.h>
-#include <npupp.h>
-#include <npruntime.h>
+#include <semaphore.h>
 
 #include "bta.h"
 
@@ -47,6 +45,7 @@ struct _btap {
 	Cursor cursor[2];
 	char pin[256];
 	char *message;
+	NPP instance;
 } btap;
 
 // cancel, ok buttons
@@ -54,7 +53,8 @@ const char *buttontext[2] = { "Cancel", "OK" };
 XRectangle buttons[2] = { {10,DIALOG_HEIGHT-35, 150, 25}, {DIALOG_WIDTH-160, DIALOG_HEIGHT-35, 150, 25} };
 XRectangle pinbox = {260,67, 394-260,86-67};
 
-const char *bta_prompt_result = NULL;
+// TODO: should probably be a semaphore
+int prompt_running=0;
 
 //////////////////
 // helper funcs
@@ -103,19 +103,78 @@ void descriptiontext(int tx, int ty, int wx, const char *str) {
 	}
 }
 
-void *btap_run(void *j) {
+/////////////////////////////////////////////////////////////////////////////////////
+
+int bta_sys_init(BTA_SYS_WINDOW pwin) {
+	int screen, sw, sh;
+	Window root;
+	Colormap cmap;
+	XSetWindowAttributes wa;
+ 
+	btap.dpy = XOpenDisplay(NULL);
+	if( btap.dpy==NULL ) {
+		fprintf(stderr, "unable to open display!");
+		return 1;
+	}
+	screen = DefaultScreen(btap.dpy);
+	root = RootWindow(btap.dpy, screen);
+	sw = DisplayWidth(btap.dpy, screen);
+	sh = DisplayHeight(btap.dpy, screen);
+	btap.cursor[0] = XCreateFontCursor(btap.dpy, XC_left_ptr);
+	btap.cursor[1] = XCreateFontCursor(btap.dpy, XC_xterm);
+	cmap = DefaultColormap(btap.dpy, screen);
+	XAllocNamedColor(btap.dpy, cmap, "#000055", &btap.clr[0], &btap.clr[0]);
+	XAllocNamedColor(btap.dpy, cmap, "#555599", &btap.clr[1], &btap.clr[1]);
+	XAllocNamedColor(btap.dpy, cmap, "#ddddff", &btap.clr[2], &btap.clr[2]);
+	XAllocNamedColor(btap.dpy, cmap, "#ffffff", &btap.clr[3], &btap.clr[3]);
+
+	btap.win = XCreateSimpleWindow(btap.dpy, root, (sw/2)-(DIALOG_WIDTH/2), (sh/2)-(DIALOG_HEIGHT/2), DIALOG_WIDTH, DIALOG_HEIGHT, 0, 0, btap.clr[3].pixel);
+	btap.gc = XCreateGC(btap.dpy, btap.win, 0, NULL);
+
+	XStoreName(btap.dpy, btap.win, "BetterThanAds - Confirm payment");
+	XSetTransientForHint(btap.dpy, btap.win, pwin);
+	XDefineCursor(btap.dpy, btap.win, btap.cursor[0]);
+
+	// grab KeyPress, ButtonRelease, PointerMotion, ExposureMask
+	wa.event_mask= KeyPressMask|ButtonPressMask|ButtonReleaseMask|PointerMotionMask|ExposureMask;
+	XChangeWindowAttributes(btap.dpy, btap.win, CWEventMask, &wa);
+
+	// banner image
+	if( XpmCreatePixmapFromData(btap.dpy, btap.win, (char **)dialog_xpm, &btap.banner, NULL, NULL) ) {
+		fprintf(stderr, "pixmap load failed!");
+		return 1;
+	}
+
+	if( !(btap.xfont = XLoadQueryFont(btap.dpy, XFONT_STR)) && !(btap.xfont = XLoadQueryFont(btap.dpy, "fixed"))) {
+		fprintf(stderr, "no fonts!");
+		return 1;
+	}
+	XSetFont(btap.dpy, btap.gc, btap.xfont->fid);
+
+	return 0;
+}
+
+void *bta_sys_thread(void *m) {
+	const char *message =(const char *)m;
 	XEvent ev;
 	int pinlen=0;
-	int done=0, redraw=1;
+	int done=0, redraw=1, unmapped=0;
 	int z=0;
 	int over=OVER_OTHER;
 
+	fprintf(stderr, "win opened\n");
+	XMapRaised(btap.dpy, btap.win);
 	/////////////
 	// get pin/button
 	btap.pin[0]=0;
-	while( !done && !XNextEvent(btap.dpy, &ev) ) {
+	while( !done && !unmapped ) {
+		if( XNextEvent(btap.dpy, &ev) )
+			break;
+
 		if( ev.type==Expose ) {
 			redraw=1;
+		} else if( ev.type==UnmapNotify ) {
+			unmapped=1;
 		} else if( ev.type==MotionNotify ) {
 			int lastover=over;
 			int x=ev.xmotion.x, y=ev.xmotion.y;
@@ -175,7 +234,10 @@ void *btap_run(void *j) {
 		// can't be done if no pin
 		if( done==1 && btap.pin[0]==0 ) done=0;
 
-		if( redraw ) {
+		if( done ) 
+			XUnmapWindow(btap.dpy, btap.win);
+
+		else if( redraw ) {
 			// draw banner
 			XCopyArea(btap.dpy, btap.banner, btap.win, btap.gc, 0,0, DIALOG_WIDTH, DIALOG_BANNER_HEIGHT, 0,0);
 
@@ -195,7 +257,7 @@ void *btap_run(void *j) {
 
 			// draw description text
 			XSetForeground(btap.dpy, btap.gc, btap.clr[0].pixel);
-			descriptiontext(5, 110, 434, btap.message);
+			descriptiontext(5, 110, 434, message);
 
 			// draw buttons
 			XSetForeground(btap.dpy, btap.gc, over==OVER_CANCEL?btap.clr[1].pixel:btap.clr[0].pixel);
@@ -213,8 +275,22 @@ void *btap_run(void *j) {
 			redraw=0;
 		}
 	}
+	XFlush(btap.dpy);
 
-	///////////
+	if( done==1 ) {
+		bta_api_got_pin(btap.instance, btap.pin);
+	} else {
+		bta_api_got_pin(btap.instance, "x");
+	}
+
+	fprintf(stderr, "win closed\n");
+	prompt_running=0;
+}
+
+void bta_sys_close() {
+	if( prompt_running )
+		pthread_cancel(btap.pt);
+
 	XFreePixmap(btap.dpy, btap.banner);
 	XFreeCursor(btap.dpy, btap.cursor[1]);
 	XFreeCursor(btap.dpy, btap.cursor[0]);
@@ -222,77 +298,53 @@ void *btap_run(void *j) {
 	XDestroyWindow(btap.dpy, btap.win);
 	XSync(btap.dpy, True);
 	XCloseDisplay(btap.dpy);
-	bta_free(btap.message);
-
-	if( done==1 ) {
-		bta_prompt_result=btap.pin;
-	} else {
-		bta_prompt_result=NULL;
-	}
-	//pthread_yield();
-	bta_prompt_gotpin(NULL);
-
-	fprintf(stderr, "thread closing\n");
-	//pthread_exit(0);
-	return NULL;
 }
 
-int bta_prompt(const char *message, void *parentwin) {
-	int screen, sw, sh;
-	Window root;
-	Window pwin = *((Window *)parentwin);
-	Colormap cmap;
-	XSetWindowAttributes wa;
-	
-	btap.dpy = XOpenDisplay(NULL);
-	if( btap.dpy==NULL ) {
-		fprintf(stderr, "unable to open display!");
-		return 1;
-	}
-	screen = DefaultScreen(btap.dpy);
-	root = RootWindow(btap.dpy, screen);
-	sw = DisplayWidth(btap.dpy, screen);
-	sh = DisplayHeight(btap.dpy, screen);
-	btap.cursor[0] = XCreateFontCursor(btap.dpy, XC_left_ptr);
-	btap.cursor[1] = XCreateFontCursor(btap.dpy, XC_xterm);
-	cmap = DefaultColormap(btap.dpy, screen);
-	XAllocNamedColor(btap.dpy, cmap, "#000055", &btap.clr[0], &btap.clr[0]);
-	XAllocNamedColor(btap.dpy, cmap, "#555599", &btap.clr[1], &btap.clr[1]);
-	XAllocNamedColor(btap.dpy, cmap, "#ddddff", &btap.clr[2], &btap.clr[2]);
-	XAllocNamedColor(btap.dpy, cmap, "#ffffff", &btap.clr[3], &btap.clr[3]);
-
-	btap.win = XCreateSimpleWindow(btap.dpy, root, (sw/2)-(DIALOG_WIDTH/2), (sh/2)-(DIALOG_HEIGHT/2), DIALOG_WIDTH, DIALOG_HEIGHT, 0, 0, btap.clr[3].pixel);
-	btap.gc = XCreateGC(btap.dpy,btap.win, 0, NULL);
-
-	XStoreName(btap.dpy, btap.win, "BetterThanAds - Confirm payment");
-	XSetTransientForHint(btap.dpy, btap.win, pwin);
-
-	XDefineCursor(btap.dpy, btap.win, btap.cursor[0]);
-	XMapRaised(btap.dpy, btap.win);
-
-	// grab KeyPress, ButtonRelease, PointerMotion, ExposureMask
-	wa.event_mask= KeyPressMask|ButtonPressMask|ButtonReleaseMask|PointerMotionMask|ExposureMask;
-	XChangeWindowAttributes(btap.dpy, btap.win, CWEventMask, &wa);
-	XSync(btap.dpy, False);
-
-	// banner image
-	if( XpmCreatePixmapFromData(btap.dpy, btap.win, (char **)dialog_xpm, &btap.banner, NULL, NULL) ) {
-		fprintf(stderr, "pixmap load failed!");
-		return 1;
-	}
-
-	if( !(btap.xfont = XLoadQueryFont(btap.dpy, XFONT_STR)) && !(btap.xfont = XLoadQueryFont(btap.dpy, "fixed"))) {
-		fprintf(stderr, "no fonts!");
-		return 1;
-	}
-	XSetFont(btap.dpy, btap.gc, btap.xfont->fid);
-
-	btap.message = (char*)bta_malloc(strlen(message)+1);
-	strcpy(btap.message, message);
-
-	fprintf(stderr, "prompt thread starting\n");
-	//pthread_create(&btap.pt, NULL, btap_run, NULL);
-	btap_run(NULL);
-	return 0;
+void bta_sys_prompt(NPP instance, char *message) {
+	fprintf(stderr, "trying to open win\n");
+	if( prompt_running ) return;
+	prompt_running=1;
+	btap.instance=instance;
+	pthread_create(&btap.pt, NULL, bta_sys_thread, message);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////
+
+pthread_t bta_sys_pt;
+sem_t bta_sys_running, bta_sys_dataready, bta_sys_dataload;
+
+void bta_sys_start_apithread() {
+	sem_init(&bta_sys_running, 0, 1);
+	sem_init(&bta_sys_dataready, 0, 0);
+	sem_init(&bta_sys_dataload, 0, 1);
+	pthread_create(&bta_sys_pt, NULL, bta_api_thread, NULL);
+}
+void bta_sys_stop_apithread() {
+	sem_wait(&bta_sys_running);
+	sem_post(&bta_sys_dataready);
+	pthread_join(bta_sys_pt,NULL);
+	sem_destroy(&bta_sys_dataload);
+	sem_destroy(&bta_sys_dataready);
+	sem_destroy(&bta_sys_running);
+}
+
+int  bta_sys_wait_dataready() {
+	sem_wait(&bta_sys_dataready);
+}
+
+void bta_sys_post_dataready() {
+	sem_post(&bta_sys_dataready);
+}
+
+int  bta_sys_is_running() {
+	int val=0;
+	sem_getvalue(&bta_sys_running, &val);
+	return val;
+}
+
+void bta_sys_lock_dataload() {
+	sem_wait(&bta_sys_dataload);
+}
+void bta_sys_unlock_dataload() {
+	sem_post(&bta_sys_dataload);
+}
