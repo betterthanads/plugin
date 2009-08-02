@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+	<head>
+	<title>Aplix Foo Plugin Test</title>
+	</head>
+	<body>
+	<script type="text/javascript">
+		function scriptSimple() {
+			try {
+				alert(document.getElementById("pluginobj").scriptSimple());
+			}
+			catch(e) {
+				alert(e);
+			}
+		}
+
+		function foo() {
+			try {
+				alert(document.getElementById("pluginobj").foo());
+			}
+			catch(e) {
+				alert(e);
+			}
+		}
+	</script>
+	<p>
+		<button onclick='scriptSimple()'>Call scriptSimple()</button>
+		<button onclick='foo()'>Call foo()</button>
+		<object id="pluginobj" type="application/x-vnd-aplix-foo">Plugin FAILED to load</object>
+	</p>
+
+	<p>If the plugin is working correctly, a click on the button should open a popup dialog containing <b>42</b> as value.</p>
+
+	<p>Please try a <a href="http://foo.webvm.net/test.html">more complex test using a loader</a> that demonstrates dynamic API provisioning.</p>
+
+	</body>
+</html>
