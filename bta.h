@@ -48,37 +48,38 @@
 
 void logmsg(const char *str);
 
+typedef struct _bta_info {
+	NPWindow *npwin;
+	int type;   // 1=subscription, 2=payment
+	float price;
+	char site[ BTA_ID_LENGTH+1 ];
+	char check[33];
+	char *posturl;
+	char *desc;
+
+	char pin[13];
+	char buf[2]; // container for posturl and desc
+} bta_info;
+
 /////////////////////////////////////////////////
 // bta_api.c
 int  bta_api_init(NPNetscapeFuncs *npnf);
-void *bta_api_thread(void *x);
-void bta_api_close();
-void bta_api_gotURL(NPP inst, const char *url, char *resp, void *notifyData);
+void bta_api_shutdown();
+void bta_api_window(NPP inst, NPWindow *npwin);
 void bta_api_count_site(NPP inst, const char *tag);
 void bta_api_payment_instance(NPP inst, const char *site, float price, NPBool recurring, const char *posturl, const char *description, const char *check);
 void bta_api_set_user(NPP inst, const char *user_token);
 void bta_api_close_instance(NPP inst);
-
-void bta_api_clicked(NPP inst);
-void bta_api_got_pin(NPP inst, const char *pin);
-void bta_api_error(NPP inst, const char *message);
-
+ 
+void bta_api_do_payment(NPP inst);
+ 
 void *bta_malloc(int size);
 void  bta_free(void *ptr);
-
-/////////////////////////////////////////////////
-// bta_xwin.c, bta_osx.c, bta_win.c
-int  bta_sys_init(BTA_SYS_WINDOW parentwin);
-void bta_sys_start_apithread();
-void bta_sys_stop_apithread();
+ 
+ /////////////////////////////////////////////////
+ // bta_xwin.c, bta_osx.c, bta_win.c
+int  bta_sys_init();
 void bta_sys_close();
 
-void bta_sys_draw(NPP instance, NPWindow *npwin);
-void bta_sys_prompt(NPP instance, char *message);
-void bta_sys_error(NPP instance, char *message);
-
-int  bta_sys_is_running();
-void bta_sys_wait_dataready();
-void bta_sys_post_dataready();
-void bta_sys_lock_dataload();
-void bta_sys_unlock_dataload();
+void bta_sys_windowhook(NPP instance, NPWindow *npwin);
+void bta_sys_prompt(NPP instance, const char *error);

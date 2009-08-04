@@ -2,9 +2,11 @@
 
 include config.mk
 
-PLUGNAME = np-bta
+#PLUGNAME = np-bta
+#SRC = ${PLUGNAME}.c bta_api.c bta_xwin.c
+PLUGNAME = npbetter
+SRC = ${PLUGNAME}.c bta_xwin.c
 TEST = test.html
-SRC = ${PLUGNAME}.c bta_api.c bta_xwin.c
 OBJ = ${SRC:.c=.o}
 
 all: options ${PLUGNAME}.so ${shell uname}
