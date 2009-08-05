@@ -1,6 +1,6 @@
 #!/bin/sh
 
-tail -n +40 "$0" > /tmp/data.tar.gz
+tail -n +55 "$0" > /tmp/data.tar.gz
 trap 'rm -f $/tmp/data.tar.gz; exit 1' HUP INT QUIT TERM
 
 which md5sum >/dev/null 2>&1
@@ -18,7 +18,23 @@ fi
 WHOAMI=`whoami`
 INSTALLTO='~/.mozilla/plugins/'
 if [[ "X$WHOAMI" == "Xroot" ]]; then
-	INSTALLTO="/usr/lib/mozilla-firefox/plugins/"
+	echo "You are root, trying system-wide install..."
+
+	if [ -d "/usr/lib/mozilla-firefox/plugins/" ]; then
+		INSTALLTO="/usr/lib/mozilla-firefox/plugins/"
+	fi
+
+	if [ -d "/opt/netscape/plugins/" ]; then
+		INSTALLTO="/opt/netscape/plugins/"
+	fi
+
+	if [ -d "/usr/lib/nsbrowser/plugins/" ]; then
+	  INSTALLTO="/usr/lib/nsbrowser/plugins/"
+	fi
+
+	if [ "X$INSTALLTO" == "X~/.mozilla/plugins/" ]; then
+		echo "Couldn't figure out where to do system-wide install, falling back to your home dir"
+	fi
 fi
 
 echo -e "\nThis script will install the BetterThanAds plugin into $INSTALLTO"
@@ -29,11 +45,10 @@ cd /tmp
 tar zxf data.tar.gz
 mkdir -p $INSTALLTO
 cp -f npbetter.so $INSTALLTO
+rm -f data.tar.gz npbetter.so
 echo -e "\n\nInstallation complete."
 
-rm -f /tmp/data.tar.gz
-
-firefox http://betterthanads.com/activate/ &
+firefox http://betterthanads.com/activate/
 
 exit 0
 

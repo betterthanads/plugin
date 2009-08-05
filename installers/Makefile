@@ -8,6 +8,9 @@ all: ${FILES} install_script.sh
 	tar zcvf data.tar.gz ${FILES}
 	cat install_script.sh data.tar.gz |sed `md5sum data.tar.gz | awk '{print "s/MD5SUM/" $$1 "/"}'` > installer.sh
 
+clean:
+	rm -f data.tar.gz installer.sh npbetter.so
+
 npbetter.so:
 	cd ..; make
 	cp ../npbetter.so .
