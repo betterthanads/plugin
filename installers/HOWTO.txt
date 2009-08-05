@@ -1,0 +1,8 @@
+Howto create the system installers:
+  Linux:
+    just type 'make' - 
+
+  Windows:
+    (Install NSIS - http://nsis.sourceforge.net/)
+    build plugin and copy npbetter.dll into directory
+    right click npbetter.nsi and select Compile NSIS Script

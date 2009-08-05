@@ -64,7 +64,7 @@ typedef struct _bta_info {
 	Colormap cmap;
 	Window window;
 #elif defined(_WINDOWS)
-
+    HWND window;
 #else
 
 #endif

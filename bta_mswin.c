@@ -25,20 +25,17 @@
 
 #include "dialog.xpm"
 
-struct _bta_sys {
-	HWND browser_win;
-
-	HANDLE thread;
+struct _bta_prompt_info {
+	HWND parent;
 	HWND win;
-
 	HFONT hfont;
 	HCURSOR cursor[2];
 	HANDLE banner;
 
-	char pin[256];
-	char *message;
 	NPP instance;
-} bta_sys;
+	char *pin;
+	char error[1];
+};
 
 // cancel, ok buttons
 const char *buttontext[2] = { "Cancel", "OK" };
@@ -48,9 +45,6 @@ RECT buttons[2] = {
   {DIALOG_WIDTH-160, DIALOG_HEIGHT-35, DIALOG_WIDTH-9, DIALOG_HEIGHT-9}
 };
 RECT pinbox = {260,67, 395,87};
-
-// TODO: should probably be a semaphore
-int prompt_running=0;
 
 void _win_error(const char *msg) {
 	DWORD err=GetLastError();
@@ -111,8 +105,10 @@ HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
 	}
 
 	// load palette into dc
-	SelectObject(hdc, CreatePalette(pal));
+	HPALETTE palobj = CreatePalette(pal);
+	SelectObject(hdc, palobj);
 	RealizePalette(hdc);
+	DeleteObject(palobj);
 
 	pixel_data = (unsigned char *)LocalAlloc(LPTR, width*height*3);
 	if( !pixel_data ) return NULL;
@@ -158,7 +154,10 @@ HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
 
 /////////////////////////////////////////////////////////////////////////////////////
 
-LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+struct _bta_prompt_info *_bta_sys_info=NULL;
+
+LRESULT CALLBACK _bta_sys_prompt_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	struct _bta_prompt_info *p = _bta_sys_info; //TODO: get from starting thread ...
 	POINTS m;
 	int x=0,y=0,z=0, lastover=OVER_OTHER;
 	HDC dc;
@@ -174,7 +173,7 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			done=0;
 			redraw=0;
 			over=OVER_OTHER;
-			bta_sys.pin[0]=0;
+			p->pin[0]=0;
 
 			clr[0] = CreateSolidBrush(RGB(0,0,0x55));
 			clr[1] = CreateSolidBrush(RGB(0x55,0x55,0x99));
@@ -185,10 +184,15 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 			// load banner image
 			dc = GetDC(hwnd);
-			bta_sys.banner = XPMLoadBitmap(dc, dialog_xpm);
-			ReleaseDC(hwnd, dc);			
+			p->banner = XPMLoadBitmap(dc, dialog_xpm);
+			ReleaseDC(hwnd, dc);
 
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
+			break;
+
+		case WM_MOVE:
+			InvalidateRect(hwnd, NULL, FALSE);
+			UpdateWindow(hwnd);
 			break;
 
         case WM_PAINT: 
@@ -211,11 +215,11 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			if( x>=pinbox.left && x<=pinbox.right && y>=pinbox.top && y<=pinbox.bottom ) {
 				if( over!=OVER_PINBOX ) {
 					over=OVER_PINBOX;
-					SetCursor(bta_sys.cursor[1]);
+					SetCursor(p->cursor[1]);
 				}
 			} else {
 				if( over==OVER_PINBOX )
-					SetCursor(bta_sys.cursor[0]);
+					SetCursor(p->cursor[0]);
 				over=OVER_OTHER;
 			}
 
@@ -229,9 +233,9 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			if( over!=lastover ) { InvalidateRect(hwnd, NULL, FALSE); UpdateWindow(hwnd); }
 			break;
 
-		case WM_SETCURSOR: 
+		case WM_SETCURSOR:
 			if( over==OVER_PINBOX )
-				SetCursor(bta_sys.cursor[1]);
+				SetCursor(p->cursor[1]);
 			return 0;
 
 		case WM_LBUTTONUP: 
@@ -244,7 +248,7 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 		case WM_CHAR: 
 			switch( wParam ) {
 				case 27: done=-1; break;
-				case '\b': if( pinlen>0 ) bta_sys.pin[ --pinlen ]=0; break;
+				case '\b': if( pinlen>0 ) p->pin[ --pinlen ]=0; break;
 				case '\r': done=1; break;
 				case '0':
 				case '1':
@@ -256,8 +260,8 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				case '7':
 				case '8':
 				case '9':  if(pinlen==13) break; 
-						 bta_sys.pin[pinlen++]=(char)wParam;
-						 bta_sys.pin[pinlen]=0;
+						 p->pin[pinlen++]=(char)wParam;
+						 p->pin[pinlen]=0;
 						 break;
 			}
 
@@ -269,7 +273,7 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 	}
     // can't be done if no pin
-	if( done==1 && bta_sys.pin[0]==0 ) done=0;
+	if( done==1 && p->pin[0]==0 ) done=0;
 
 	if( redraw ) {
 		redraw=0;
@@ -279,13 +283,11 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 		// draw banner
 		HDC hdcBanner = CreateCompatibleDC(ps.hdc);
-		SelectObject(hdcBanner, bta_sys.banner);
+		SelectObject(hdcBanner, p->banner);
 		BitBlt(ps.hdc,0,0,DIALOG_WIDTH, DIALOG_BANNER_HEIGHT, hdcBanner,0,0,SRCCOPY);
 
 		// draw pinbox
-		if( prompt_running==2 )
-			FillRect(ps.hdc, &pinbox, clr[4]);
-		else if( over==OVER_PINBOX ) 
+		if( over==OVER_PINBOX ) 
 			FillRect(ps.hdc, &pinbox, clr[2]);
 		else
 			FillRect(ps.hdc, &pinbox, clr[3]);
@@ -302,13 +304,21 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			}
 		}
 
+		// draw description text
 		RECT descRect;	
-		// TODO: get from instance
-		LPCWSTR message = L"I agree to pay some money to some place. This is another sentence just to make the text wrap.";
 		SetTextColor(ps.hdc, RGB(0,0,0));
 		SetBkColor(ps.hdc, RGB(0xFF,0xFF,0xFF));
 		SetRect(&descRect, 5,110, DIALOG_WIDTH-5, DIALOG_HEIGHT-40);
-		DrawText(ps.hdc, message, -1, &descRect, DT_LEFT|DT_TOP|DT_WORDBREAK);
+		DrawTextA(ps.hdc, ((bta_info *)p->instance->pdata)->desc, -1, &descRect, DT_LEFT|DT_TOP|DT_WORDBREAK);
+
+		// draw error message
+		if( p->error[0]!=0 ) {
+			RECT err;
+			SetRect(&err, 10, DIALOG_HEIGHT-70, DIALOG_WIDTH-10, DIALOG_HEIGHT-45);
+			FillRect(ps.hdc, &err, clr[4]);
+			SetBkColor(ps.hdc, RGB(0xFF,0xCC,0xCC));
+			DrawTextA(ps.hdc, p->error, -1, &err, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+		}
 
 		// draw buttons
 		SelectObject(ps.hdc, hFont);
@@ -327,12 +337,18 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 	}
 
 	if( done!=0 ) {
-		if( done==1 ) {
-			bta_api_got_pin(bta_sys.instance, bta_sys.pin);
-		} else {
-			bta_api_got_pin(bta_sys.instance, "x");
-		}
-		prompt_running=0;
+        // tell main window we have a PIN
+		if( done>0 )
+		  SendMessage(p->parent, WM_USER, 42, 42);
+
+		DeleteObject( clr[0] );
+		DeleteObject( clr[1] );
+		DeleteObject( clr[2] );
+		DeleteObject( clr[3] );
+		DeleteObject( clr[4] );
+
+		DeleteObject( p->banner );
+
 		DestroyWindow(hwnd);
 		return 1;
 	}
@@ -340,49 +356,17 @@ LRESULT CALLBACK bta_sys_thread( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-int bta_sys_init(BTA_SYS_WINDOW pwin) {
-	if( ((int)pwin)==0 || bta_sys.browser_win!=NULL ) return 0;
-	logmsg("bta_sys_init()\n");
-
-	bta_sys.browser_win=GetParent(GetParent(pwin));
-	bta_sys.hfont = (HFONT)GetStockObject(ANSI_VAR_FONT); 
-	bta_sys.cursor[0]=LoadCursor(NULL, IDC_ARROW);
-	bta_sys.cursor[1]=LoadCursor(NULL, IDC_IBEAM);
-
-	// create a transient dialog class, parented to pwin
-	WNDCLASS wndclass;
-
-	wndclass.lpszClassName=L"BetterThanAdsPrompt";
-	wndclass.lpszMenuName=NULL;
-	wndclass.cbClsExtra=0;
-	wndclass.cbWndExtra=0;
-	wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION); 
-	wndclass.hCursor=bta_sys.cursor[0];
-	wndclass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-	wndclass.lpfnWndProc=bta_sys_thread;
-	wndclass.style=CS_HREDRAW|CS_VREDRAW;
-
-	wndclass.hInstance=(HINSTANCE)GetWindowLong(bta_sys.browser_win, GWL_HINSTANCE);
-
-	if( !RegisterClass(&wndclass) ) {
-		char ibuf[20];
-		_itoa(GetLastError(),ibuf,10);
-		logmsg("ERROR registering window class!\n   Error code: ");
-		logmsg(ibuf);
-		logmsg("\n");
-		return 1;
-	}
-
+int bta_sys_init() {
 	return 0;
 }
 
 void bta_sys_close() {
-//	DestroyWindow(bta_sys.win);
 }
 
-void _bta_sys_prompt(NPP instance, char *message) {
-	RECT b;
-	GetWindowRect(bta_sys.browser_win, &b);
+void _bta_sys_prompt(struct _bta_prompt_info *p) {
+    RECT b;
+	HINSTANCE hinstance = (HINSTANCE)GetWindowLong(p->parent, GWL_HINSTANCE);
+	GetWindowRect(GetParent(GetParent(p->parent)), &b);
 
 	int sh = b.bottom-b.top;
 	int sw = b.right-b.left;
@@ -393,19 +377,17 @@ void _bta_sys_prompt(NPP instance, char *message) {
 	int x=b.left+((sw/2)-(w/2));
 	int y=b.top+((sh/2)-(h/2));
 
-	HINSTANCE hinstance = (HINSTANCE)GetWindowLong(bta_sys.browser_win, GWL_HINSTANCE);
-
-	bta_sys.win = CreateWindow(L"BetterThanAdsPrompt", L"BetterThanAds - Confirm payment",
+	p->win = CreateWindow(L"BetterThanAdsPrompt", L"BetterThanAds - Confirm payment",
 		WS_OVERLAPPED|WS_CAPTION, x,y, w,h,
-		bta_sys.browser_win, (HMENU)NULL, hinstance, NULL);
+		p->parent, (HMENU)NULL, hinstance, NULL);
 
-	if( !bta_sys.win ) {
+	if( !p->win ) {
 		logmsg("error creating window\n");
 		return;
 	}
 
-	ShowWindow(bta_sys.win, SW_SHOW);
-	UpdateWindow(bta_sys.win);
+	ShowWindow(p->win, SW_SHOW);
+	UpdateWindow(p->win);
 
 	MSG msg;
 	while( GetMessage( &msg, NULL, 0, 0 ) > 0)
@@ -413,43 +395,63 @@ void _bta_sys_prompt(NPP instance, char *message) {
        TranslateMessage(&msg);
        DispatchMessage(&msg); 
     }
-	DestroyWindow(bta_sys.win);
+	bta_free(p);
 }
 
-void bta_sys_prompt(NPP instance, char *message) {
-	DWORD threadid;
+void bta_sys_prompt(NPP instance, const char *error) {
+	struct _bta_prompt_info *p = (struct _bta_prompt_info *)bta_malloc(sizeof(struct _bta_prompt_info)+strlen(error)+1);
 
-	logmsg("bta_sys_prompt()\n");
-	if( prompt_running ) return;
-	prompt_running=1;
-	bta_sys.instance=instance;
+	_bta_sys_info = p;
+	p->pin = ((bta_info *)instance->pdata)->pin;
+	p->parent= ((bta_info*)instance->pdata)->window;
+	strcpy_s(p->error, strlen(error)+1, error);
+	p->instance=instance;
 
-	HANDLE promptThreadHandle = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)_bta_sys_prompt, NULL, 0, &threadid);
-}
+	HINSTANCE hinstance = (HINSTANCE)GetWindowLong(p->parent, GWL_HINSTANCE);
 
-void bta_sys_error(NPP instance, char *message) {
-	DWORD threadid;
+	p->hfont = (HFONT)GetStockObject(ANSI_VAR_FONT); 
+	p->cursor[0]=LoadCursor(NULL, IDC_ARROW);
+	p->cursor[1]=LoadCursor(NULL, IDC_IBEAM);
 
-	logmsg("bta_sys_error()\n");
-	if( prompt_running ) {
-		prompt_running=2;
-		return;
+	WNDCLASS wndclass;
+	if( GetClassInfo(hinstance, L"BetterThanAdsPrompt", &wndclass)==0 ) {
+		wndclass.lpszClassName=L"BetterThanAdsPrompt";
+		wndclass.lpszMenuName=NULL;
+		wndclass.cbClsExtra=0;
+		wndclass.cbWndExtra=0;
+		wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION); 
+		wndclass.hCursor=p->cursor[0];
+		wndclass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+		wndclass.lpfnWndProc=_bta_sys_prompt_callback;
+		wndclass.style=CS_HREDRAW|CS_VREDRAW;
+
+		wndclass.hInstance=hinstance;
+
+		if( !RegisterClass(&wndclass) ) {
+			char ibuf[20];
+			_itoa(GetLastError(),ibuf,10);
+			logmsg("ERROR registering window class!\n   Error code: ");
+			logmsg(ibuf);
+			logmsg("\n");
+			return;
+		}
 	}
 
-	prompt_running=2;
-	bta_sys.instance=instance;
-
-	HANDLE promptThreadHandle = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)_bta_sys_prompt, NULL, 0, &threadid);
+	DWORD threadid;
+	HANDLE promptThreadHandle = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)_bta_sys_prompt, p, 0, &threadid);
 }
+///////////////////////////////////////////////////////////////////////////////
 
-void _bta_sys_draw(HWND hwnd) {
+void _bta_sys_draw(HWND hwnd, NPP instance) {
+	bta_info *bta = (bta_info*)instance->pdata;
 	PAINTSTRUCT ps;
 	RECT winsize;
 	HBRUSH clr;
 	HFONT hFont;
-	LPCWSTR str = L"BTA: 25c/mo"; // TODO: get from instance...
 	int width=0, height=0;
 	int x = 0, y = 0;
+	char str[128];
+	sprintf_s(str, 128, "BTA: $%0.2f%s", bta->price, bta->type==1?"/mo":"");
 
 	GetWindowRect(hwnd, &winsize);
 	width=(winsize.right-winsize.left);
@@ -465,69 +467,46 @@ void _bta_sys_draw(HWND hwnd) {
 	hFont = (HFONT)GetStockObject(ANSI_VAR_FONT); 
 	SelectObject(ps.hdc, hFont);
 	SetRect(&winsize, 0,0, width, height);
-	DrawText(ps.hdc, str, -1, &winsize, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+	DrawTextA(ps.hdc, str, -1, &winsize, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 
 	EndPaint(hwnd, &ps);
 }
 
-LRESULT CALLBACK _bta_sys_draw_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+NPP _bta_sys_npp;
+
+LRESULT CALLBACK _bta_sys_button_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) 
     { 
         case WM_PAINT: 
-  		    _bta_sys_draw(hwnd);
-					return 0;
-				case WM_LBUTTONDOWN:
-					bta_api_clicked(bta_sys.instance);
-					return 0;
+  		    _bta_sys_draw(hwnd, _bta_sys_npp);
+			return 0;
+		case WM_LBUTTONDOWN:
+			bta_sys_prompt(_bta_sys_npp, "");
+			return 0;
+		case WM_USER:
+			if( wParam==42 && lParam==42 ) {
+			  bta_api_do_payment( _bta_sys_npp );
+			}
+			return 0;
     } 
     return DefWindowProc(hwnd, uMsg, wParam, lParam); 
 }
 
-void bta_sys_draw(NPP instance, NPWindow *npwin) {
-	bta_sys.instance=instance;
+void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
+	if( instance->pdata ) {
+		bta_info *bta = (bta_info*)instance->pdata;
 
-	bta_sys_init((HWND)npwin->window);
+		// if closing or changing, remove old callback
+		if( npwin_new==NULL || bta->window!=0 ) {
+			bta->window = (HWND)0;
+		}
 
-	// add callback to window (ignore old callback)
-    SetWindowLongPtr((HWND)npwin->window, GWLP_WNDPROC, (LONG)_bta_sys_draw_callback);
-}
-/////////////////////////////////////////////////////////////////////////////////////
+		// install new callback (TODO: need to pass instance... )
+		if( npwin_new!=NULL ) {
+			bta->window = (HWND)npwin_new->window;
 
-HANDLE bta_sys_threadHandle;
-HANDLE bta_sys_dataready, bta_sys_dataload;
-int __is_running=0;
-
-void bta_sys_start_apithread() {
-	DWORD threadid;
-
-	__is_running=1;
-	bta_sys_dataready = CreateSemaphore(NULL, 0, 1, NULL);
-	bta_sys_dataload  = CreateSemaphore(NULL, 1, 1, NULL);
-
-	bta_sys_threadHandle = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)bta_api_thread, NULL, 0, &threadid);
-}
-void bta_sys_stop_apithread() {
-	__is_running=0;
-	ReleaseSemaphore(bta_sys_dataready, 1, NULL);
-	WaitForSingleObject(bta_sys_threadHandle, INFINITE);
-	CloseHandle(bta_sys_dataload);
-	CloseHandle(bta_sys_dataready);
-}
-
-int  bta_sys_is_running() {
-	return __is_running;
-}
-
-void bta_sys_wait_dataready() {
-	WaitForSingleObject(bta_sys_dataready, INFINITE);
-}
-void bta_sys_post_dataready() {
-	ReleaseSemaphore(bta_sys_dataready, 1, NULL);
-}
-
-void bta_sys_lock_dataload() {
-	WaitForSingleObject(bta_sys_dataload, INFINITE);
-}
-void bta_sys_unlock_dataload() {
-	ReleaseSemaphore(bta_sys_dataload, 1, NULL);
+			SetWindowLongPtr(bta->window, GWLP_WNDPROC, (LONG)_bta_sys_button_callback);
+			_bta_sys_npp = instance;
+		}
+	}
 }
