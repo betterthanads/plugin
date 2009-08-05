@@ -1,6 +1,10 @@
 #!/bin/sh
 
-tail -n +55 "$0" > /tmp/data.tar.gz
+echo -e "
+ LICENSE
+"
+
+tail -n +SCRIPT_LINES "$0" > /tmp/data.tar.gz
 trap 'rm -f $/tmp/data.tar.gz; exit 1' HUP INT QUIT TERM
 
 which md5sum >/dev/null 2>&1
