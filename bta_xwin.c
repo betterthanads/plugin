@@ -45,8 +45,9 @@ struct _bta_prompt_info {
 	Display *dpy;
 	Window parent;
 	Window win;
-	GC gc;
 	Colormap colormap;
+
+	GC gc;
 	XFontStruct *xfont;
 	XColor clr[5];
 	Pixmap banner;
@@ -132,7 +133,6 @@ void bta_sys_close() {
 // completely self-contained button drawer
 void bta_sys_draw(NPP instance) {
   bta_info *bta = (bta_info*)instance->pdata;
-  NPWindow *npwin = bta->npwin;
 	Display *dpy = NULL;
 	Colormap cmap;
 	XRectangle r;
@@ -143,25 +143,27 @@ void bta_sys_draw(NPP instance) {
 	XFontStruct *xfont;
 	char str[64];
 	int len = 5;
-	int x = npwin->width/2, y = npwin->height/2;
+	int x = bta->width/2, y = bta->height/2;
 	sprintf(str, "BTA: $%0.2f%s", bta->price, bta->type==1?"/mo":"");
 	len = strlen(str);
 
-	dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
-	cmap = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->colormap;
+	//dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
+	//cmap = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->colormap;
+	dpy=bta->dpy;
+	cmap=bta->cmap;
 
 	xfont = XLoadQueryFont(dpy, XFONT_BUTTON_STR);
 	y -= (xfont->ascent+xfont->descent)/2;
 	y += xfont->ascent+1;
 	x -= XTextWidth(xfont, str, len)/2;
 
-	win=(Window)npwin->window;
+	win=bta->window;
 	gc = XCreateGC(dpy, win, 0, NULL);
 	XAllocNamedColor(dpy, cmap, "#000055", &clr, &clr);
 	XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
 
-	r.x = 0;  r.width  = npwin->width;
-	r.y = 0;	r.height = npwin->height;
+	r.x = 0;  r.width  = bta->width;
+	r.y = 0;	r.height = bta->height;
 	
 	XSetFont(dpy, gc, xfont->fid);
 
@@ -184,7 +186,6 @@ void _bta_sys_xt_callback( Widget w, void *x, XEvent* ev, char* cont )  {
 		bta_sys_prompt( (NPP)x, "");
 		*cont = 0;
 	} else if( ev->type==ClientMessage && strncmp(ev->xclient.data.b,"PIN",3)==0 ) {
-		logmsg("BTA: Got ClientMessage w/ PIN!\n");
 		bta_api_do_payment( (NPP)x );
 		*cont = 0;
 	}
@@ -192,26 +193,33 @@ void _bta_sys_xt_callback( Widget w, void *x, XEvent* ev, char* cont )  {
 
 void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
 	if( instance->pdata ) {
-		NPWindow *npwin = ((bta_info*)instance->pdata)->npwin;
+		bta_info *bta = (bta_info*)instance->pdata;
 
 		// if closing or changing, remove old callback
-		if( npwin_new==NULL || (npwin!=NULL && npwin!=npwin_new) ) {
-			Display *dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
-			Widget w = XtWindowToWidget(dpy, (Window)(npwin->window));
+		if( npwin_new==NULL && bta->window!=0 ) {
+			Widget w = XtWindowToWidget(bta->dpy, bta->window);
 
 			XtRemoveEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
+			
+			bta->dpy    = NULL;
+			bta->cmap   = (Colormap)0;
+			bta->window = (Window)0;
 		}
 
 		// install new callback
 		if( npwin_new != NULL ) {
-			Display *dpy = ((NPSetWindowCallbackStruct *)(npwin_new->ws_info))->display;
-			Widget w = XtWindowToWidget(dpy, (Window)(npwin_new->window));
+			bta->dpy    = ((NPSetWindowCallbackStruct *)(npwin_new->ws_info))->display;
+			bta->cmap   = ((NPSetWindowCallbackStruct *)(npwin_new->ws_info))->colormap;
+			bta->window = (Window)npwin_new->window;
+			bta->width  = npwin_new->width;
+			bta->height = npwin_new->height;
+			Widget w = XtWindowToWidget(bta->dpy, bta->window);
 			
 			XtAddEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
 		}
 
 		// save to instance
-		((bta_info*)instance->pdata)->npwin = npwin_new;
+		//((bta_info*)instance->pdata)->npwin = npwin_new;
 	}
 }
 
@@ -398,16 +406,11 @@ void bta_sys_prompt(NPP instance, const char *error) {
 	Window root;
 	XSetWindowAttributes wa;
 
-	NPWindow *npwin = ((bta_info*)instance->pdata)->npwin;
-	// cant use these, for some reason it drops events
-	//p->dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
-	//p->colormap = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->colormap;
-	
 	p->dpy = _bta_sys_dpy;
 	p->colormap = _bta_sys_colormap;
 
 	screen = DefaultScreen(p->dpy);
-	p->parent = (Window)(npwin->window);
+	p->parent = ((bta_info*)instance->pdata)->window;
 	root = RootWindow(p->dpy, screen);
 	sw = DisplayWidth(p->dpy, screen);
 	sh = DisplayHeight(p->dpy, screen);
@@ -438,7 +441,7 @@ void bta_sys_prompt(NPP instance, const char *error) {
 		return;
 	}
 
-	// create transient window, child of npwin->window
+	// create transient popup window
 	p->gc = XCreateGC(p->dpy, p->win, 0, NULL);
 	XStoreName(p->dpy, p->win, "BetterThanAds - Confirm payment");
 	XSetTransientForHint(p->dpy, p->win, p->parent);

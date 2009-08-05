@@ -388,12 +388,8 @@ void bta_api_count_rcvd(NPP inst, const char *url, const char *resp) {
 		bta_pv_buf[25]=0;
 		bta_pv_len=strlen(bta_pv_buf);
 		logmsg("BetterThanAds: Posted pageviews successfully\n");
-		logmsg(resp);
-		logmsg("\n\n");
 	} else {
-		logmsg("BetterThanAds: Remote Error posting pageviews: \n");
-		logmsg(resp);
-		logmsg("\n\n");
+		logmsg("BetterThanAds: Remote Error posting pageviews\n");
 	}
 }
 
@@ -401,7 +397,6 @@ void bta_api_count_site(NPP inst, const char *tag) {
 	static int logged=0;
 	char *ptr, last;
 	int pos=0, count=1;
-	logmsg("bta_api_count_site\n");
 	
 	if( strlen(tag)!=19 ) return;
 
@@ -448,11 +443,9 @@ void bta_api_set_user(NPP inst, const char *user_token) {
 
 void bta_api_payment_instance(NPP inst, const char *site, float price, NPBool recurring, const char *posturl, const char *description, const char *check) {
 	bta_info *nbta=NULL;
-	logmsg("bta_api_payment_instance()\n");
   nbta = bta_malloc(sizeof(bta_info)+strlen(posturl)+strlen(description));
 	if( !nbta ) return;
 
-	nbta->npwin=NULL;
 	nbta->type=recurring?1:2;
 	nbta->price=price;
 	strncpy(nbta->site, site, BTA_ID_LENGTH);
@@ -472,21 +465,15 @@ void bta_api_payment_instance(NPP inst, const char *site, float price, NPBool re
 void bta_api_window(NPP instance, NPWindow* npwin) {
   if( instance->pdata ) {
 		bta_info *nbta = (bta_info *)instance->pdata;
-		logmsg("bta_api_window()\n");
-
-		if( nbta->npwin == npwin ) // no change
-			return;
 
 		bta_sys_windowhook(instance, npwin);
 	}
 }
 
 void bta_api_close_instance(NPP instance) {
-	logmsg("bta_api_close_instance()\n");
   if( instance->pdata ) {
 		bta_info *nbta = (bta_info *)instance->pdata;
-		if( nbta->npwin!=NULL )
-			bta_sys_windowhook(instance, NULL);
+		bta_sys_windowhook(instance, NULL);
 		bta_free(instance->pdata);
 	}
 }

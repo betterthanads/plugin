@@ -49,15 +49,26 @@
 void logmsg(const char *str);
 
 typedef struct _bta_info {
-	NPWindow *npwin;
 	int type;   // 1=subscription, 2=payment
 	float price;
 	char site[ BTA_ID_LENGTH+1 ];
 	char check[33];
 	char *posturl;
 	char *desc;
-
 	char pin[13];
+
+	// embeded instance info
+	int width, height;
+#ifdef XP_UNIX
+	Display *dpy;
+	Colormap cmap;
+	Window window;
+#elif defined(_WINDOWS)
+
+#else
+
+#endif
+
 	char buf[2]; // container for posturl and desc
 } bta_info;
 
