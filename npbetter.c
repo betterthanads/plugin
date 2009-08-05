@@ -443,7 +443,7 @@ void bta_api_set_user(NPP inst, const char *user_token) {
 
 void bta_api_payment_instance(NPP inst, const char *site, float price, NPBool recurring, const char *posturl, const char *description, const char *check) {
 	bta_info *nbta=NULL;
-  nbta = bta_malloc(sizeof(bta_info)+strlen(posturl)+strlen(description));
+    nbta = (bta_info *)bta_malloc(sizeof(bta_info)+strlen(posturl)+strlen(description));
 	if( !nbta ) return;
 
 	nbta->type=recurring?1:2;
@@ -492,7 +492,7 @@ void bta_api_do_payment_rcvd(NPP inst, const char *url, const char *resp) {
 void bta_api_do_payment(NPP inst) {
 	bta_info *p = (bta_info *)inst->pdata;
 
-	__payment_postbuf = bta_malloc(128+strlen(p->desc)+(BTA_ID_LENGTH*2));
+	__payment_postbuf = (char *)bta_malloc(128+strlen(p->desc)+(BTA_ID_LENGTH*2));
 	if( !__payment_postbuf ) return;
 	sprintf(__payment_postbuf, "site=%19s&user=%19s&pin=%s&price=%3.2f&check=%32s&type=%s&description=%s",
 			p->site, bta_user, p->pin, p->price, p->check, p->type==1?"subscription":"payment", p->desc);
