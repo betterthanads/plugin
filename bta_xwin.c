@@ -1,5 +1,23 @@
-// X Windows prompt dialog
-// and posix threads
+// BetterThanAds Plugin - site tracking, microsubscription and payment plugin
+// Copyright (C) 2009 Jeremy Jay <jeremy@betterthanads.com>
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+/////////////
+//
+// BetterThanAds NPAPI Plugin - X Windows-specific code
+//
 
 #include <X11/cursorfont.h>
 #include <X11/Intrinsic.h>
@@ -108,6 +126,8 @@ void descriptiontext(struct _bta_prompt_info *p, int tx, int ty, int wx, const c
 
 /////////////////////////////////////////////////////////////////////////////////////
 
+// these are only used in the prompt window
+//  firefox seems to drop key events in separate threads
 Display *_bta_sys_dpy = NULL;
 Colormap _bta_sys_colormap;
 
@@ -131,6 +151,7 @@ void bta_sys_close() {
 ////////////////////////////////////////////////////////////
 
 // completely self-contained button drawer
+//   we could probably cache the colors and fonts...
 void bta_sys_draw(NPP instance) {
   bta_info *bta = (bta_info*)instance->pdata;
 	Display *dpy = NULL;
@@ -147,8 +168,6 @@ void bta_sys_draw(NPP instance) {
 	sprintf(str, "BTA: $%0.2f%s", bta->price, bta->type==1?"/mo":"");
 	len = strlen(str);
 
-	//dpy = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->display;
-	//cmap = ((NPSetWindowCallbackStruct *)(npwin->ws_info))->colormap;
 	dpy=bta->dpy;
 	cmap=bta->cmap;
 
@@ -173,9 +192,10 @@ void bta_sys_draw(NPP instance) {
 	XSetForeground(dpy, gc, white.pixel);
 	XDrawString(dpy, win, gc, x,y, str, len);
 
-	XFreeFont(dpy, xfont);
 	XFreeColors(dpy, cmap, &clr.pixel, 1, 0);
+	XFreeColors(dpy, cmap, &white.pixel, 1, 0);
 	XFreeGC(dpy, gc);
+	XFreeFont(dpy, xfont);
 }
 
 void _bta_sys_xt_callback( Widget w, void *x, XEvent* ev, char* cont )  {
@@ -217,9 +237,6 @@ void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
 			
 			XtAddEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
 		}
-
-		// save to instance
-		//((bta_info*)instance->pdata)->npwin = npwin_new;
 	}
 }
 
@@ -238,17 +255,11 @@ void *_bta_sys_prompt( void *x )  {
 	int over=OVER_OTHER;
 
 	XMapRaised(p->dpy, p->win);
-	//XGrabKeyboard(p->dpy, p->win, False, GrabModeAsync, GrabModeAsync, CurrentTime);
-	//XFlush(p->dpy);
-	/////////////
-	// get pin/button
 	p->pin[0]=0;
 	while( done==0 ) {
 		XSync(p->dpy, False);
 
 		if( XNextEvent(p->dpy, &ev) )
-		//if( !XCheckTypedWindowEvent(p->dpy, p->win, KeyPress, &ev) )
-		//  if( XWindowEvent(p->dpy, p->win, ~0, &ev) )
 			  break;
 		
 		XLockDisplay(p->dpy);
@@ -358,8 +369,8 @@ void *_bta_sys_prompt( void *x )  {
 			// draw text on buttons
 			XSetForeground(p->dpy, p->gc, p->clr[3].pixel);
 
-			centeredtext(p, buttons[1].x+buttons[1].width/2, buttons[1].y+buttons[1].height/2, "OK");
-			centeredtext(p, buttons[0].x+buttons[0].width/2, buttons[0].y+buttons[0].height/2, "Cancel");
+			centeredtext(p, buttons[1].x+buttons[1].width/2, buttons[1].y+buttons[1].height/2, buttontext[1]);
+			centeredtext(p, buttons[0].x+buttons[0].width/2, buttons[0].y+buttons[0].height/2, buttontext[0]);
 			
 			redraw=0;
 		}
@@ -399,7 +410,7 @@ void *_bta_sys_prompt( void *x )  {
 	return NULL;
 }
 
-// creates a prompt window, shows it, and adds an xt callback to process events
+// creates a prompt window, shows it, and starts a pthread to process events
 void bta_sys_prompt(NPP instance, const char *error) {
 	int screen, sw, sh;
 	struct _bta_prompt_info *p = (struct _bta_prompt_info *)bta_malloc(sizeof(struct _bta_prompt_info)+strlen(error));
@@ -456,7 +467,7 @@ void bta_sys_prompt(NPP instance, const char *error) {
 	p->pin = ((bta_info *)instance->pdata)->pin;
 	strcpy(p->error, error);
 
-	// start a thread for the window event-loop
+	// start a pthread for the window event-loop
 	pthread_t pt;
 	pthread_create(&pt, NULL, _bta_sys_prompt, p);
 }

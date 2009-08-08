@@ -1,5 +1,27 @@
+// BetterThanAds Plugin - site tracking, microsubscription and payment plugin
+// Copyright (C) 2009 Jeremy Jay <jeremy@betterthanads.com>
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+/////////////
+//
+// BetterThanAds NPAPI Plugin
+//
+
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "bta.h"
 
@@ -35,7 +57,7 @@ struct _post_struct {
 // posts the urlencoded-string data to url asynchronously
 void __bta_post_data(void *ptr) {
 	struct _post_struct *x = (struct _post_struct *)ptr;
-	int r=npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, FALSE, ptr);
+	int r=npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, false, ptr);
 	//fprintf(stderr, "posturlnotify(%x,'%s','%s',%d,'%s',false,null) error: %d\n", x->inst, x->url, x->target, x->len, x->buf, r);
 }
 
@@ -70,13 +92,13 @@ void bta_post_data(NPP inst, const char *url, const char *data, const char *targ
 		//npnfuncs->pluginthreadasynccall(inst, __bta_post_data, x);
 		fprintf(stderr, "-- async posting not implemented.\n");
 	} else {
-		npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, FALSE, x);
+		npnfuncs->posturlnotify(x->inst, x->url, x->target, x->len, x->buf, false, x);
 	  //fprintf(stderr, "posturlnotify(%x,'%s','%s',%d,'%s',false,null) error: %d\n", x->inst, x->url, x->target, x->len, x->buf, r);
 	}
 }
 
 // new stream started
-static NPError new_stream(NPP instance, NPMIMEType type, NPStream* stream, NPBool seekable, uint16* stype) {
+static NPError new_stream(NPP instance, NPMIMEType type, NPStream* stream, NPBool seekable, uint16_t* stype) {
 	return NPERR_NO_ERROR;
 }
 
@@ -86,12 +108,12 @@ static NPError destroy_stream(NPP instance, NPStream* stream, NPReason reason) {
 }
 
 // how much data can we take?
-static int32 write_ready(NPP instance, NPStream* stream) {
+static int32_t write_ready(NPP instance, NPStream* stream) {
 	return BTA_BUFFER_SIZE;
 }
 
 // take some data from the stream
-int32 write_data(NPP instance, NPStream* stream, int32 offset, int32 len, void* dbuf) {
+int32_t write_data(NPP instance, NPStream* stream, int32_t offset, int32_t len, void* dbuf) {
 	// yup, it overwrites. none of the api calls should return more than BTA_BUFFER_SIZE bytes anyway.
 	if( len>=BTA_BUFFER_SIZE ) len=BTA_BUFFER_SIZE;
 	memcpy(url_resp, ((char *)dbuf)+offset, len);
@@ -109,7 +131,7 @@ void url_notify(NPP instance, const char* url,	NPReason reason, void *v ) {
 
 ////////////////////////////////////////////////////////////
 
-static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16 mode, int16 argc, char *argn[], char *argv[], NPSavedData *saved) {
+static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, int16_t argc, char *argn[], char *argv[], NPSavedData *saved) {
 	const char *emptystr="";
 	const char *domain=NULL;
 	const char *site_token=NULL;
@@ -163,7 +185,6 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16 mode, in
 	if( action==0 ) { 
 		NPBool privateMode=0;
 
-		//if( npnfuncs->getvalue(instance, NPNVprivateModeBool, &privateMode) == NPERR_NO_ERROR ) {
 		if( npnfuncs->getvalue(instance, (NPNVariable)18 /*NPNVprivateModeBool*/, &privateMode) == NPERR_NO_ERROR ) {
 			if( privateMode ) {
 				fprintf(stderr, "In private mode, no tracking\n");
@@ -196,7 +217,7 @@ static NPError set_window(NPP instance, NPWindow* npwin) {
 
 static NPError handle_event(NPP instance, void *ev) {
 	// TODO: mac callback here
-	return FALSE;
+	return false;
 }
 
 static NPError get_value(NPP instance, NPPVariable variable, void *value) {
@@ -210,11 +231,11 @@ static NPError get_value(NPP instance, NPPVariable variable, void *value) {
 		*((char **)value) = "<a href=\"http://betterthanads.com/\">BetterThanAds.com</a> site-supporting and micropayment plugin.";
 		break;
 	case NPPVpluginWindowBool:
-		*((PRBool *)value) = PR_TRUE;
+		*((bool *)value) = true;
 		break;
 #if defined(XULRUNNER_SDK)
 	case NPPVpluginNeedsXEmbed:
-		*((PRBool *)value) = PR_FALSE;
+		*((bool *)value) = false;
 		break;
 #endif
 	}

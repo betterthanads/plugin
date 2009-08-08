@@ -1,8 +1,8 @@
 
 # this will build a self-contained installer script
 
-FILES=npbetter.so
-LICENSE=${shell sed 's/.$$/\\n/' license.txt}
+FILES=npbetter32.so npbetter64.so
+LICENSE=${shell sed 's/.$$/\\n/' ../LICENSE}
 
 all: ${FILES} install_script.sh
 	rm -f data.tar.gz
@@ -13,8 +13,4 @@ all: ${FILES} install_script.sh
 	cat data.tar.gz >> installer.sh
 
 clean:
-	rm -f data.tar.gz installer.sh npbetter.so
-
-npbetter.so:
-	cd ..; make
-	cp ../npbetter.so .
+	rm -f data.tar.gz installer.sh npbetter??.so

@@ -1,5 +1,26 @@
-// MS Windows prompt dialog
-// and threads
+// BetterThanAds Plugin - site tracking, microsubscription and payment plugin
+// Copyright (C) 2009 Jeremy Jay <jeremy@betterthanads.com>
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+/////////////
+//
+// BetterThanAds NPAPI Plugin - MS Windows-specific code
+//
+// Known Bugs:
+//   prompt windows use global info pointers, so having more than one open at a
+//     time will probably not work correctly
 
 #include <stdio.h>
 #include <string.h>
@@ -39,26 +60,15 @@ struct _bta_prompt_info {
 
 // cancel, ok buttons
 const char *buttontext[2] = { "Cancel", "OK" };
+
 // RECTs are +1 on bottom and right because MS doesn't draw the last pixel
 RECT buttons[2] = {
-  {10,DIALOG_HEIGHT-35, 161, DIALOG_HEIGHT-9}, 
-  {DIALOG_WIDTH-160, DIALOG_HEIGHT-35, DIALOG_WIDTH-9, DIALOG_HEIGHT-9}
+	{10,DIALOG_HEIGHT-35, 161, DIALOG_HEIGHT-9}, 
+	{DIALOG_WIDTH-160, DIALOG_HEIGHT-35, DIALOG_WIDTH-9, DIALOG_HEIGHT-9}
 };
 RECT pinbox = {260,67, 395,87};
 
-void _win_error(const char *msg) {
-	DWORD err=GetLastError();
-	char ibuf[20];
-	if( err==0 ) return;
-	_itoa(err,ibuf,10);
-
-	logmsg("ERROR code ");
-	logmsg(ibuf);
-	logmsg(" when  ");
-	logmsg(msg);
-	logmsg("\n");
-}
-
+// seemed easier than dealing with resources and BMPs
 HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
 	NPLOGPALETTE pal;
 	int i=0, j=0, k=0, off=0, clr=0, possible_colors=0;
@@ -77,7 +87,7 @@ HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
 	i=bytesperpixel;
 	possible_colors=95;  // (chars 32-126)
 	while( --i>0 ) {
-	  possible_colors*=95;
+		possible_colors*=95;
 	}
 
 	int *colorLookup = (int *)LocalAlloc(LPTR, possible_colors*sizeof(int));
@@ -90,8 +100,8 @@ HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
 		const char *cidx=xpm[1+i];
 		int red,green,blue;
 		if( sscanf(xpm[1+i]+bytesperpixel, " c #%02X%02X%02X", &red,&green,&blue)!=3 ) 
-		   continue;
-		
+			continue;
+
 		clr=0;
 		for(j=0; j<bytesperpixel; j++) {
 			clr*=95;
@@ -195,7 +205,7 @@ LRESULT CALLBACK _bta_sys_prompt_callback( HWND hwnd, UINT uMsg, WPARAM wParam, 
 			UpdateWindow(hwnd);
 			break;
 
-        case WM_PAINT: 
+		case WM_PAINT: 
 			redraw=1;
 			break;
 
@@ -260,9 +270,9 @@ LRESULT CALLBACK _bta_sys_prompt_callback( HWND hwnd, UINT uMsg, WPARAM wParam, 
 				case '7':
 				case '8':
 				case '9':  if(pinlen==13) break; 
-						 p->pin[pinlen++]=(char)wParam;
-						 p->pin[pinlen]=0;
-						 break;
+										 p->pin[pinlen++]=(char)wParam;
+									 p->pin[pinlen]=0;
+									 break;
 			}
 
 			InvalidateRect(hwnd, NULL, FALSE);
@@ -272,7 +282,7 @@ LRESULT CALLBACK _bta_sys_prompt_callback( HWND hwnd, UINT uMsg, WPARAM wParam, 
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 
 	}
-    // can't be done if no pin
+	// can't be done if no pin
 	if( done==1 && p->pin[0]==0 ) done=0;
 
 	if( redraw ) {
@@ -337,9 +347,9 @@ LRESULT CALLBACK _bta_sys_prompt_callback( HWND hwnd, UINT uMsg, WPARAM wParam, 
 	}
 
 	if( done!=0 ) {
-        // tell main window we have a PIN
+		// tell main window we have a PIN
 		if( done>0 )
-		  SendMessage(p->parent, WM_USER, 42, 42);
+			SendMessage(p->parent, WM_USER, 42, 42);
 
 		DeleteObject( clr[0] );
 		DeleteObject( clr[1] );
@@ -364,7 +374,7 @@ void bta_sys_close() {
 }
 
 void _bta_sys_prompt(struct _bta_prompt_info *p) {
-    RECT b;
+	RECT b;
 	HINSTANCE hinstance = (HINSTANCE)GetWindowLong(p->parent, GWL_HINSTANCE);
 	GetWindowRect(GetParent(GetParent(p->parent)), &b);
 
@@ -378,8 +388,8 @@ void _bta_sys_prompt(struct _bta_prompt_info *p) {
 	int y=b.top+((sh/2)-(h/2));
 
 	p->win = CreateWindow(L"BetterThanAdsPrompt", L"BetterThanAds - Confirm payment",
-		WS_OVERLAPPED|WS_CAPTION, x,y, w,h,
-		p->parent, (HMENU)NULL, hinstance, NULL);
+			WS_OVERLAPPED|WS_CAPTION, x,y, w,h,
+			p->parent, (HMENU)NULL, hinstance, NULL);
 
 	if( !p->win ) {
 		logmsg("error creating window\n");
@@ -391,10 +401,10 @@ void _bta_sys_prompt(struct _bta_prompt_info *p) {
 
 	MSG msg;
 	while( GetMessage( &msg, NULL, 0, 0 ) > 0)
-    { 
-       TranslateMessage(&msg);
-       DispatchMessage(&msg); 
-    }
+	{ 
+		TranslateMessage(&msg);
+		DispatchMessage(&msg); 
+	}
 	bta_free(p);
 }
 
@@ -475,21 +485,21 @@ void _bta_sys_draw(HWND hwnd, NPP instance) {
 NPP _bta_sys_npp;
 
 LRESULT CALLBACK _bta_sys_button_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) 
-    { 
-        case WM_PAINT: 
-  		    _bta_sys_draw(hwnd, _bta_sys_npp);
+	switch (uMsg) 
+	{ 
+		case WM_PAINT: 
+			_bta_sys_draw(hwnd, _bta_sys_npp);
 			return 0;
 		case WM_LBUTTONDOWN:
 			bta_sys_prompt(_bta_sys_npp, "");
 			return 0;
 		case WM_USER:
 			if( wParam==42 && lParam==42 ) {
-			  bta_api_do_payment( _bta_sys_npp );
+				bta_api_do_payment( _bta_sys_npp );
 			}
 			return 0;
-    } 
-    return DefWindowProc(hwnd, uMsg, wParam, lParam); 
+	} 
+	return DefWindowProc(hwnd, uMsg, wParam, lParam); 
 }
 
 void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
@@ -501,11 +511,12 @@ void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
 			bta->window = (HWND)0;
 		}
 
-		// install new callback (TODO: need to pass instance... )
+		// install new callback
 		if( npwin_new!=NULL ) {
 			bta->window = (HWND)npwin_new->window;
 
 			SetWindowLongPtr(bta->window, GWLP_WNDPROC, (LONG)_bta_sys_button_callback);
+			// TODO: need to pass instance...
 			_bta_sys_npp = instance;
 		}
 	}

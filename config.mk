@@ -1,19 +1,21 @@
-# npsimple version
-VERSION = 0.3
+# npbetter version
+VERSION = 0.9
 
-# Customize below to fit your system
-
+# mac code is completely untested and nonexistant
 ifeq (${shell uname}, Darwin)
-CPPFLAGS = -DVERSION=\"${VERSION}\" -DWEBKIT_DARWIN_SDK
-LDFLAGS = -dynamiclib #-framework Carbon -framework CoreFoundation -framework WebKit
+  CPPFLAGS = -DVERSION=\"${VERSION}\" -DWEBKIT_DARWIN_SDK
+  LDFLAGS = -dynamiclib #-framework Carbon -framework CoreFoundation -framework WebKit
+  
+	SYS_SRC = bta_osx.c
 else
-INCS = -I/usr/include/xulrunner-1.9/stable # apt-get install xulrunner-dev
-CPPFLAGS = -DVERSION=\"${VERSION}\" -DXULRUNNER_SDK -DMOZ_X11 -lXpm `pkg-config --libs --cflags xulrunner-plugin`
-#LDFLAGS = -L/usr/lib -lc
-LDFLAGS = -lXpm
+  INCS = -I/usr/include/xulrunner-1.9.1/stable
+  CPPFLAGS = -DVERSION=\"${VERSION}\" -DXULRUNNER_SDK -DMOZ_X11 -DXP_UNIX
+  LDFLAGS = -lXpm
+
+  SYS_SRC = bta_xwin.c
 endif
 #CFLAGS = -g -pedantic -Wall -O2 ${INCS} ${CPPFLAGS} -DDEBUG
-CFLAGS = -g -O2 ${INCS} ${CPPFLAGS} -DDEBUG
+CFLAGS = -O2 -fPIC ${INCS} ${CPPFLAGS}
 
 # compiler and linker
 CC = gcc

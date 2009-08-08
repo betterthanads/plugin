@@ -1,28 +1,23 @@
-This is a simple NPAPI test plugin with a scriptable (javascript) object. Any
-function call into the plugin will return an int32 with the value 42.
+Better Than Ads Plugin Source Code
+Copyright (c) 2009 Jeremy Jay <jeremy@betterthanads.com>
 
-In order to build this plugin you need to setup the NPAPI headers (e.g.
-xulrunner-sdk) in *config.mk*.
+This is a simple site tracking plugin which can also post micropayment and
+microsubscription requests to a remote server, at api.betterthanads.com.
 
-	; make
+It has been tested in FireFox and Opera in Linux and Windows.  Any browser
+which supports NPAPI plugins should be able to work with it with minor changes.
 
-Following browsers have been tested successfully with this plugin so far:
+Building the plugin in linux should be pretty straightforward, set up paths to
+the xulrunner-sdk in config.mk and then run 'make'  To build the installation
+script, cd to the installers dir, copy the plugin over, and run 'make' again.
 
-- Iceweasel 2.0/Debian Linux
-- Iceweasel 3.0/Debian Linux
-- Firefox 2.0/Ubuntu Linux
-- Firefox 3.0/Ubuntu Linux
-- WebKit/GTK c6c3f8ca4996a96a1c7e9d1ddb9c6e3bd05daed9/Ubuntu Linux
-- Opera 9.27/Ubuntu Linux
-- Opera 9.5/Debian Linux
-- Firefox 3/Darwin
-- Safari 3.1.2/Darwin
-- Firefox 3.0/Windows XP
-- Opera 9.5/Windows XP
-- Torchmobile's IRIS browser 1.0.13/Windows Mobile 6
+To build in Windows, load the solution file into Visual Studio 2008 Express or
+later and adjust the include paths for the xulrunner-sdk.  You can use the .nsi
+script in the installers dir to build the installer as well.
 
-What does not work:
+---
 
-- Opera 9.51/Darwin bug-350791@bugs.opera.com
-
-Further information: http://wiki.webvm.net/webvm/npapi/
+Many thanks to Aplix Corp for releasing npsimple, which we used to get a
+handle on the NPAPI system.  Npsimple is available at: http://git.webvm.net/
+and although almost all of the npsimplecode itself is no longer used, many
+of the supporting files remain as a testament to their utility.

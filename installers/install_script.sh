@@ -16,7 +16,8 @@ if [[ $? -eq 0 ]]; then
 		exit 1
 	fi
 else
-	echo 'Cannot verify archive (md5sum not installed)'
+	echo "Cannot verify archive (md5sum not installed)"
+	echo "Continuing anyway..."
 fi
 
 WHOAMI=`whoami`
@@ -41,15 +42,22 @@ if [[ "X$WHOAMI" == "Xroot" ]]; then
 	fi
 fi
 
-echo -e "\nThis script will install the BetterThanAds plugin into $INSTALLTO"
+ARCH=`uname -m`
+if [[ "X$ARCH" == "Xx86_64" ]]; then
+	ARCH=64
+else
+	ARCH=32
+fi
+
+echo -e "\nThis script will install the $ARCH-bit BetterThanAds plugin into $INSTALLTO"
 echo -e "\n   ---  Press Ctrl-C NOW to abort  ---"
 sleep 3
 
 cd /tmp
 tar zxf data.tar.gz
 mkdir -p $INSTALLTO
-cp -f npbetter.so $INSTALLTO
-rm -f data.tar.gz npbetter.so
+cp -f npbetter$ARCH.so $INSTALLTO
+rm -f data.tar.gz npbetter??.so
 echo -e "\n\nInstallation complete."
 
 firefox http://betterthanads.com/activate/
