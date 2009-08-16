@@ -2,16 +2,16 @@
 
 // Plugin info
 resource 'STR#' (126) { {
-    "Tests npsimple()",
-    "npsimple Test Plug-In"
+    "Plugin for BetterThanAds",
+    "BetterThanAds Plugin"
 } };
 
 // MIME Type descriptions
 resource 'STR#' (127) { {
-    "npsimple test"
+    "npbetter plugin"
 } };
 
 // MIME Types
 resource 'STR#' (128) { {
-    "application/x-vnd-aplix-foo"
+    "application/x-vnd-betterthanads-bta"
 } };
