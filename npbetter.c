@@ -147,7 +147,7 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, 
 				bta_api_set_user(instance, site_token);
 				
 				// force plugin reload to ensure all instances get new userid
-				npnfuncs->reloadplugins(true);
+				//npnfuncs->reloadplugins(true);
 				return NPERR_NO_ERROR;
 			}
 			
