@@ -149,16 +149,18 @@ void bta_sys_close() {
 ////////////////////////////////////////////////////////////
 // BTA button drawing code
 ////////////////////////////////////////////////////////////
+int _bta_hovering=0;
 
 // completely self-contained button drawer
-//   we could probably cache the colors and fonts...
+//   we could probably cache the colors and fonts and cursors...
 void bta_sys_draw(NPP instance) {
   bta_info *bta = (bta_info*)instance->pdata;
 	Display *dpy = NULL;
 	Colormap cmap;
 	XRectangle r;
 	Window win;
-	XColor clr, white;
+	XColor clr, white, blend, blend2;
+	Cursor cur;
 	XEvent ev;
 	GC gc;
 	XFontStruct *xfont;
@@ -178,8 +180,24 @@ void bta_sys_draw(NPP instance) {
 
 	win=bta->window;
 	gc = XCreateGC(dpy, win, 0, NULL);
-	XAllocNamedColor(dpy, cmap, "#000055", &clr, &clr);
-	XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
+	if( !_bta_hovering ) {
+		XAllocNamedColor(dpy, cmap, "#777777", &clr, &clr);
+		XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
+		XAllocNamedColor(dpy, cmap, "#ddddff", &blend, &blend);
+		XAllocNamedColor(dpy, cmap, "#eeeeff", &blend2, &blend2);
+		cur = XCreateFontCursor(dpy, XC_left_ptr);
+		XDefineCursor(dpy, win, cur);
+		XFreeCursor(dpy, cur);
+	} else {
+		cur = XCreateFontCursor(dpy, XC_hand2);
+		XDefineCursor(dpy, win, cur);
+		XFreeCursor(dpy, cur);
+
+		XAllocNamedColor(dpy, cmap, "#000000", &clr, &clr);
+		XAllocNamedColor(dpy, cmap, "#ddddff", &white, &white);
+		XAllocNamedColor(dpy, cmap, "#ffffff", &blend, &blend);
+		XAllocNamedColor(dpy, cmap, "#eeeeff", &blend2, &blend2);
+	}
 
 	r.x = 0;  r.width  = bta->width;
 	r.y = 0;	r.height = bta->height;
@@ -188,18 +206,44 @@ void bta_sys_draw(NPP instance) {
 
 	XSetForeground(dpy, gc, clr.pixel);
 	XFillRectangles(dpy, win, gc, &r, 1);
+	
+	r.x++; r.y++; r.width-=2; r.height-=2;
+	XSetForeground(dpy, gc, blend.pixel);
+	XFillRectangles(dpy, win, gc, &r, 1);
+	
+	if( !_bta_hovering ) {
+		r.x+=1; r.y+=1; r.width-=2; r.height=(r.height-5)/2;
+		XSetForeground(dpy, gc, white.pixel);
+		XFillRectangles(dpy, win, gc, &r, 1);
 
-	XSetForeground(dpy, gc, white.pixel);
+		r.y+=r.height; r.height=3;
+		XSetForeground(dpy, gc, blend2.pixel);
+		XFillRectangles(dpy, win, gc, &r, 1);
+	} else {
+		r.x+=1; r.y+=1; r.width-=2; r.height-=2;
+		XSetForeground(dpy, gc, white.pixel);
+		XFillRectangles(dpy, win, gc, &r, 1);
+	}
+
+	XSetForeground(dpy, gc, clr.pixel);
 	XDrawString(dpy, win, gc, x,y, str, len);
 
 	XFreeColors(dpy, cmap, &clr.pixel, 1, 0);
 	XFreeColors(dpy, cmap, &white.pixel, 1, 0);
+	XFreeColors(dpy, cmap, &blend.pixel, 1, 0);
+	XFreeColors(dpy, cmap, &blend2.pixel, 1, 0);
 	XFreeGC(dpy, gc);
 	XFreeFont(dpy, xfont);
 }
 
 void _bta_sys_xt_callback( Widget w, void *x, XEvent* ev, char* cont )  {
-	if( ev->type==Expose ) {
+	if( ev->type==Expose || ev->type==EnterNotify || ev->type==LeaveNotify ) {
+		if( ev->type==EnterNotify ) {
+			_bta_hovering=1;
+		} else if( ev->type==LeaveNotify ) {
+			_bta_hovering=0;
+		}
+
 		bta_sys_draw( (NPP)x );
 		*cont = 0;
 	} else if( ev->type==ButtonPress ) {
@@ -219,7 +263,7 @@ void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
 		if( npwin_new==NULL && bta->window!=0 ) {
 			Widget w = XtWindowToWidget(bta->dpy, bta->window);
 
-			XtRemoveEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
+			XtRemoveEventHandler( w, EnterWindowMask|LeaveWindowMask|ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
 			
 			bta->dpy    = NULL;
 			bta->cmap   = (Colormap)0;
@@ -235,7 +279,7 @@ void bta_sys_windowhook(NPP instance, NPWindow *npwin_new) {
 			bta->height = npwin_new->height;
 			Widget w = XtWindowToWidget(bta->dpy, bta->window);
 			
-			XtAddEventHandler( w, ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
+			XtAddEventHandler( w, EnterWindowMask|LeaveWindowMask|ExposureMask|ButtonPressMask, 1, _bta_sys_xt_callback, instance );
 		}
 	}
 }
