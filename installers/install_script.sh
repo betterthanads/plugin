@@ -74,8 +74,9 @@ if [[ "X$ACCPT_LICENSE" == "Xi agree" ]]; then
 	cp -f npbetter$ARCH.so $INSTALLTO
 	rm -f data.tar.gz npbetter??.so
 	echo -e "\n\n  Installation complete."
+	echo -e "  Activate Plugin at: http://betterthanads.com/activate/"
 
-	firefox http://betterthanads.com/activate/
+	firefox http://betterthanads.com/activate/ &
 else
   rm /tmp/data.tar.gz
 	echo -e "\n    You must agree to the license (using the words \"I agree\") to install.\n\n"
