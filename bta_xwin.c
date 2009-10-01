@@ -50,9 +50,12 @@
 
 ////////////////////////////
 
+#include "icon.xpm"
 #include "dialog.xpm"
-#define XFONT_STR "-*-courier-medium-r-*-*-18-*-*-*-*-*-*-*"
-#define XFONT_BUTTON_STR "-*-helvetica-*-r-*-*-12-*-*-*-*-*-*-*"
+
+//#define XFONT_STR "-*-courier-medium-r-*-*-18-*-*-*-*-*-*-*"
+#define XFONT_STR "-*-helvetica-medium-r-*-*-12-*-*-*-*-*-*-*"
+#define XFONT_BUTTON_STR "-*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*"
 
 // cancel, ok buttons
 const char *buttontext[2] = { "Cancel", "OK" };
@@ -152,86 +155,82 @@ void bta_sys_close() {
 int _bta_hovering=0;
 
 // completely self-contained button drawer
-//   we could probably cache the colors and fonts and cursors...
+//   we could probably cache the colors and fonts and cursors and icon...
 void bta_sys_draw(NPP instance) {
   bta_info *bta = (bta_info*)instance->pdata;
 	Display *dpy = NULL;
 	Colormap cmap;
 	XRectangle r;
 	Window win;
-	XColor clr, white, blend, blend2;
+	XColor white, black, bg;
 	Cursor cur;
 	XEvent ev;
 	GC gc;
 	XFontStruct *xfont;
+	Pixmap bta_icon;
 	char str[64];
 	int len = 5;
-	int x = bta->width/2, y = bta->height/2;
-	sprintf(str, "BTA: $%0.2f%s", bta->price, bta->type==1?"/mo":"");
-	len = strlen(str);
+	int x = 26+(bta->width-28)/2, y = 12;
 
 	dpy=bta->dpy;
 	cmap=bta->cmap;
 
-	xfont = XLoadQueryFont(dpy, XFONT_BUTTON_STR);
-	y -= (xfont->ascent+xfont->descent)/2;
-	y += xfont->ascent+1;
-	x -= XTextWidth(xfont, str, len)/2;
-
 	win=bta->window;
 	gc = XCreateGC(dpy, win, 0, NULL);
+	XAllocNamedColor(dpy, cmap, "#000000", &black, &black);
+	XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
+
 	if( !_bta_hovering ) {
-		XAllocNamedColor(dpy, cmap, "#777777", &clr, &clr);
-		XAllocNamedColor(dpy, cmap, "#ffffff", &white, &white);
-		XAllocNamedColor(dpy, cmap, "#ddddff", &blend, &blend);
-		XAllocNamedColor(dpy, cmap, "#eeeeff", &blend2, &blend2);
+		XAllocNamedColor(dpy, cmap, "#ffffff", &bg, &bg);
 		cur = XCreateFontCursor(dpy, XC_left_ptr);
 		XDefineCursor(dpy, win, cur);
 		XFreeCursor(dpy, cur);
+	
+		if( bta->type==1 ) 
+			sprintf(str, "subscribe");
+		else
+			sprintf(str, "pay now");
 	} else {
 		cur = XCreateFontCursor(dpy, XC_hand2);
 		XDefineCursor(dpy, win, cur);
 		XFreeCursor(dpy, cur);
 
-		XAllocNamedColor(dpy, cmap, "#000000", &clr, &clr);
-		XAllocNamedColor(dpy, cmap, "#ddddff", &white, &white);
-		XAllocNamedColor(dpy, cmap, "#ffffff", &blend, &blend);
-		XAllocNamedColor(dpy, cmap, "#eeeeff", &blend2, &blend2);
+		XAllocNamedColor(dpy, cmap, "#eeeeff", &bg, &bg);
+		
+		sprintf(str, "$%0.2f%s", bta->price, bta->type==1?"/mo":"");
 	}
-
-	r.x = 0;  r.width  = bta->width;
-	r.y = 0;	r.height = bta->height;
+	if( XpmCreatePixmapFromData(dpy, win, (char **)icon_xpm, &bta_icon, NULL, NULL) ) {
+		logmsg("pixmap load failed!\n");
+		return;
+	}
 	
+	xfont = XLoadQueryFont(dpy, XFONT_BUTTON_STR);
+	y -= (xfont->ascent+xfont->descent)/2;
+	y += xfont->ascent+1;
+	len = strlen(str);
+	x -= XTextWidth(xfont, str, len)/2;
 	XSetFont(dpy, gc, xfont->fid);
 
-	XSetForeground(dpy, gc, clr.pixel);
+	r.x = 0;  r.width  = bta->width;
+	r.y = 0;	r.height = 24;
+
+	XSetForeground(dpy, gc, black.pixel);
+	XFillRectangles(dpy, win, gc, &r, 1);
+
+	//r.x=23; r.y=1; r.width=bta->width-24; r.height=22;
+	r.x=24; r.y=2; r.width=bta->width-26; r.height=20;
+	XSetForeground(dpy, gc, bg.pixel);
 	XFillRectangles(dpy, win, gc, &r, 1);
 	
-	r.x++; r.y++; r.width-=2; r.height-=2;
-	XSetForeground(dpy, gc, blend.pixel);
-	XFillRectangles(dpy, win, gc, &r, 1);
-	
-	if( !_bta_hovering ) {
-		r.x+=1; r.y+=1; r.width-=2; r.height=(r.height-5)/2;
-		XSetForeground(dpy, gc, white.pixel);
-		XFillRectangles(dpy, win, gc, &r, 1);
+	XCopyArea(dpy, bta_icon, win, gc, 0,0, 16, 16, 4,4);
 
-		r.y+=r.height; r.height=3;
-		XSetForeground(dpy, gc, blend2.pixel);
-		XFillRectangles(dpy, win, gc, &r, 1);
-	} else {
-		r.x+=1; r.y+=1; r.width-=2; r.height-=2;
-		XSetForeground(dpy, gc, white.pixel);
-		XFillRectangles(dpy, win, gc, &r, 1);
-	}
-
-	XSetForeground(dpy, gc, clr.pixel);
+	XSetForeground(dpy, gc, black.pixel);
 	XDrawString(dpy, win, gc, x,y, str, len);
 
-	XFreeColors(dpy, cmap, &clr.pixel, 1, 0);
+	XFreeColors(dpy, cmap, &black.pixel, 1, 0);
 	XFreeColors(dpy, cmap, &white.pixel, 1, 0);
-	XFreeColors(dpy, cmap, &blend.pixel, 1, 0);
-	XFreeColors(dpy, cmap, &blend2.pixel, 1, 0);
+	XFreeColors(dpy, cmap, &bg.pixel, 1, 0);
+	XFreePixmap(dpy, bta_icon);
 	XFreeGC(dpy, gc);
 	XFreeFont(dpy, xfont);
 }
