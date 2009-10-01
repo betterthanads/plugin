@@ -217,6 +217,7 @@ static NPError set_window(NPP instance, NPWindow* npwin) {
 
 static NPError handle_event(NPP instance, void *ev) {
 	// TODO: mac callback here
+	logmsg("handle_event()\n");
 	return false;
 }
 
@@ -281,6 +282,7 @@ NPError OSCALL NP_Initialize(NPNetscapeFuncs *npnf, NPPluginFuncs *nppfuncs) {
 #else
 
 NPError OSCALL NP_Initialize(NPNetscapeFuncs *npnf) {
+	logmsg("npbetter starting...\n");
 	if( npnf != NULL ) {
 
 #endif

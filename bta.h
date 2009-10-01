@@ -57,7 +57,8 @@ typedef unsigned __int64  uint64_t;
 
 #elif defined(WEBKIT_DARWIN_SDK)
 
- // TODO: mac code...
+ #include <Carbon/Carbon.h>
+ #define BTA_SYS_WINDOW CGrafPtr
 
 #endif
 
@@ -71,8 +72,9 @@ typedef unsigned __int64  uint64_t;
 // fixed buffer size
 #define BTA_BUFFER_SIZE 102400
 
-#define BTA_API_PAGEVIEWS    "https://api.betterthanads.com/pageviews/"
-#define BTA_API_PAYMENT      "https://api.betterthanads.com/payment/"
+// TODO: MOVE TO https://
+#define BTA_API_PAGEVIEWS    "http://api.betterthanads.com/pageviews/"
+#define BTA_API_PAYMENT      "http://api.betterthanads.com/payment/"
 
 void logmsg(const char *str);
 
@@ -87,15 +89,10 @@ typedef struct _bta_info {
 
 	// embedded instance info
 	int width, height;
+	BTA_SYS_WINDOW window;
 #ifdef XP_UNIX
 	Display *dpy;
 	Colormap cmap;
-	Window window;
-#elif defined(_WINDOWS)
-  HWND window;
-#elif defined(WEBKIT_DARWIN_SDK)
- // TODO: mac code...
-
 #endif
 
 	char buf[2]; // container for posturl and desc
