@@ -44,6 +44,7 @@
 
 ////////////////////////////
 
+#include "icon.xpm"
 #include "dialog.xpm"
 
 struct _bta_prompt_info {
@@ -67,6 +68,7 @@ RECT buttons[2] = {
 	{DIALOG_WIDTH-160, DIALOG_HEIGHT-35, DIALOG_WIDTH-9, DIALOG_HEIGHT-9}
 };
 RECT pinbox = {260,67, 395,87};
+int _bta_hovering=0;
 
 // seemed easier than dealing with resources and BMPs
 HBITMAP XPMLoadBitmap(HDC hdc, const char **xpm) {
@@ -461,25 +463,66 @@ void _bta_sys_draw(HWND hwnd, NPP instance) {
 	int width=0, height=0;
 	int x = 0, y = 0;
 	char str[128];
-	sprintf_s(str, 128, "BTA: $%0.2f%s", bta->price, bta->type==1?"/mo":"");
 
 	GetWindowRect(hwnd, &winsize);
 	width=(winsize.right-winsize.left);
 	height=(winsize.bottom-winsize.top);
 
+	COLORREF bg=RGB(0xFF,0xFF,0xFF);
+	COLORREF black=RGB(0,0,0);
+
+	if( !_bta_hovering ) {
+		// set normal cursor
+		SetCursor( LoadCursor(NULL, IDC_ARROW) );
+	
+		if( bta->type==1 ) 
+			sprintf(str, "subscribe");
+		else
+			sprintf(str, "pay now");
+	} else {
+		// set hand cursor
+		SetCursor( LoadCursor(NULL, IDC_HAND) );
+
+		bg=RGB(0xEE,0xEE,0xFF);
+		
+		sprintf(str, "$%0.2f%s", bta->price, bta->type==1?"/mo":"");
+	}
+
+	HDC dc=GetDC(hwnd);
+	HBITMAP bta_icon = XPMLoadBitmap(dc, icon_xpm);
+	ReleaseDC(hwnd, dc);
+
 	BeginPaint(hwnd, &ps);
-	SetTextColor(ps.hdc, RGB(0xFF,0xFF,0xFF));
-	SetBkColor(ps.hdc, RGB(0,0,0x55));
-	clr = CreateSolidBrush(RGB(0,0,0x55));
-	SelectObject(ps.hdc, clr);
-	Rectangle(ps.hdc, 0,0, width, height);
 
 	hFont = (HFONT)GetStockObject(ANSI_VAR_FONT); 
 	SelectObject(ps.hdc, hFont);
-	SetRect(&winsize, 0,0, width, height);
+
+	SetTextColor(ps.hdc, black);
+	SetBkColor(ps.hdc, bg);
+	clr = CreateSolidBrush(black);
+	SelectObject(ps.hdc, clr);
+	Rectangle(ps.hdc, 0,0, width, height);
+
+	/// paint icon
+	HDC hdcIcon = CreateCompatibleDC(ps.hdc);
+	SelectObject(hdcIcon, bta_icon);
+	BitBlt(ps.hdc,4,4,16,16, hdcIcon,0,0,SRCCOPY);
+
+	DeleteObject( clr );
+	clr = CreateSolidBrush(bg);
+	SelectObject(ps.hdc, clr);
+	Rectangle(ps.hdc, 23, 1, width-1, height-1);
+
+	SetRect(&winsize, 24, 2, width-2, height-2);
 	DrawTextA(ps.hdc, str, -1, &winsize, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 
 	EndPaint(hwnd, &ps);
+
+	// free icon, font, brushes?
+	DeleteObject( bta_icon );
+	DeleteObject( hFont );
+	DeleteObject( hdcIcon );
+	DeleteObject( clr );
 }
 
 NPP _bta_sys_npp;
@@ -487,7 +530,32 @@ NPP _bta_sys_npp;
 LRESULT CALLBACK _bta_sys_button_callback( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) 
 	{ 
-		case WM_PAINT: 
+		case WM_SETCURSOR:
+			return 0;
+
+		case WM_MOUSELEAVE:
+			if( _bta_hovering==1 ) {
+				_bta_hovering=0;
+			}
+			InvalidateRect(hwnd, NULL, FALSE);
+			UpdateWindow(hwnd);
+			return 0;
+
+		case WM_MOUSEMOVE:
+			if( _bta_hovering==0 ) {
+				_bta_hovering=1;
+				TRACKMOUSEEVENT tme;
+				tme.cbSize=sizeof(TRACKMOUSEEVENT);
+				tme.dwFlags=TME_LEAVE;
+				tme.hwndTrack=hwnd;
+				TrackMouseEvent(&tme);
+
+				InvalidateRect(hwnd, NULL, FALSE);
+				UpdateWindow(hwnd);
+			}
+			return 0;
+
+		case WM_PAINT:
 			_bta_sys_draw(hwnd, _bta_sys_npp);
 			return 0;
 		case WM_LBUTTONDOWN:
