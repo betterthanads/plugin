@@ -262,13 +262,8 @@ NPError OSCALL NP_GetEntryPoints(NPPluginFuncs *nppfuncs) {
 	nppfuncs->urlnotify     = url_notify;
 	nppfuncs->newstream     = new_stream;
 	nppfuncs->destroystream = destroy_stream;
-#ifdef _WINDOWS
-	nppfuncs->writeready    = (NPP_WriteReadyUPP)write_ready;
-	nppfuncs->write         = (NPP_WriteUPP)write_data;
-#else
 	nppfuncs->writeready    = write_ready;
 	nppfuncs->write         = write_data;
-#endif
 
 	return NPERR_NO_ERROR;
 }
@@ -276,13 +271,14 @@ NPError OSCALL NP_GetEntryPoints(NPPluginFuncs *nppfuncs) {
 #if !defined(_WINDOWS) && !defined(WEBKIT_DARWIN_SDK)
 
 NPError OSCALL NP_Initialize(NPNetscapeFuncs *npnf, NPPluginFuncs *nppfuncs) {
+	logmsg("npbetter (*nix) starting...\n");
 	if( npnf != NULL ) {
 		NP_GetEntryPoints(nppfuncs);
 
 #else
 
 NPError OSCALL NP_Initialize(NPNetscapeFuncs *npnf) {
-	logmsg("npbetter starting...\n");
+	logmsg("npbetter (win) starting...\n");
 	if( npnf != NULL ) {
 
 #endif

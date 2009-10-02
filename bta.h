@@ -22,11 +22,7 @@
 #if defined(XULRUNNER_SDK)
  #include <npapi.h>
  #include <nptypes.h>
-#ifdef _WINDOWS
- #include <npupp.h>
-#else
  #include <npfunctions.h>
-#endif
  #include <npruntime.h>
 #elif defined(WEBKIT_DARWIN_SDK)
  #include <Webkit/npapi.h>
