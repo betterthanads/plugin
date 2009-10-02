@@ -131,6 +131,10 @@
 				RelativePath=".\npbetter.def"
 				>
 			</File>
+			<File
+				RelativePath=".\npbetter.rc"
+				>
+			</File>
 		</Filter>
 	</Files>
 	<Globals>
