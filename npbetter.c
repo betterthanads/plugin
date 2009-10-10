@@ -104,6 +104,7 @@ static NPError new_stream(NPP instance, NPMIMEType type, NPStream* stream, NPBoo
 
 // closing stream
 static NPError destroy_stream(NPP instance, NPStream* stream, NPReason reason) {
+	npnfuncs->status(instance, "Done.");
 	return NPERR_NO_ERROR;
 }
 
@@ -456,6 +457,7 @@ void bta_api_set_user(NPP inst, const char *user_token) {
 		logmsg("error opening datafile\n");
 		return;
 	}
+
 	fprintf(bta_fp, "user=%19s", user_token);
 	fclose(bta_fp);
 	strcpy(bta_user, user_token);
