@@ -131,10 +131,10 @@ void url_notify(NPP instance, const char* url,	NPReason reason, void *v ) {
 }
 
 ////////////////////////////////////////////////////////////
+const char *_bta_domain=NULL;
 
 static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, int16_t argc, char *argn[], char *argv[], NPSavedData *saved) {
 	const char *emptystr="";
-	const char *domain=NULL;
 	const char *site_token=NULL;
 	const char *desc=emptystr;
 	const char *posturl=NULL;
@@ -152,8 +152,9 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, 
 				return NPERR_NO_ERROR;
 			}
 			
-			if( strcmp(argn[i], "domain")==0 ) // TODO: remove me sometime
-				domain=argv[i];
+			// TODO: remove me sometime
+			if( strcmp(argn[i], "domain")==0 )
+				_bta_domain=argv[i];
 
 			if( strcmp(argn[i], "site")==0 )
 				site_token=argv[i];
@@ -175,13 +176,6 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, 
 
 	if( site_token==NULL )
 		return NPERR_GENERIC_ERROR;
-
-	// TODO: remove me sometime
-	if( domain!=NULL ) {
-		char urlbuf[4096];
-    sprintf(urlbuf, "http://api.betterthanads.com/adddomain/%s/%s", domain, site_token);
-		npnfuncs->geturl(instance, urlbuf, NULL);
-	}
 
 	if( action==0 ) { 
 		NPBool privateMode=0;
@@ -422,10 +416,33 @@ void bta_api_count_site(NPP inst, const char *tag) {
 	static int logged=0;
 	char *ptr, last;
 	int pos=0, count=1;
-	
+
 	if( strlen(tag)!=19 ) return;
 
+	if( _bta_domain!=NULL ) {
+		tag=_bta_domain;
+		_bta_domain=NULL;
+	}
+
 	// find site tag in cache
+	ptr=bta_pv_buf+1;
+	while( ptr!=NULL && *(ptr-1) != '&' )
+		ptr=strstr(bta_pv_buf, tag);
+
+	if( ptr==NULL ) {
+		// not found, append to the end
+		sprintf(bta_pv_buf+bta_pv_len, "&%s=%05d", tag, 1);
+		bta_pv_len=strlen(bta_pv_buf);
+	} else {
+		
+		// found, read and update count
+		pos=ptr-bta_pv_buf+(strlen(tag)+1);
+		last=bta_pv_buf[pos+5];
+		sscanf(bta_pv_buf+pos, "%05d", &count);
+		sprintf(bta_pv_buf+pos, "%05d", count+1);
+		bta_pv_buf[pos+5]=last;
+	}
+/*
 	ptr=strstr(bta_pv_buf, tag);
 	if( ptr==NULL ) {
 		// not found, append to the end
@@ -439,6 +456,7 @@ void bta_api_count_site(NPP inst, const char *tag) {
 		sprintf(bta_pv_buf+pos, "%05d", count+1);
 		bta_pv_buf[pos+5]=last;
 	}
+*/
 
 	// post to server every once in a while (0 is good cause then we do it when the browser is started)
 	if( ((logged++)%BTA_PAGEVIEWS)==0 ) {
