@@ -51,6 +51,9 @@ typedef unsigned __int64  uint64_t;
 
  #define BTA_SYS_WINDOW HWND
 
+#include <windows.h>
+#include <direct.h>
+
 #elif defined(WEBKIT_DARWIN_SDK)
 
  #include <Carbon/Carbon.h>

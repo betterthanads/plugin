@@ -29,14 +29,8 @@ static NPNetscapeFuncs *npnfuncs = NULL;
 
 void logmsg(const char *msg) {
 #ifdef DEBUG
-#ifndef _WINDOWS
 	fputs(msg, stderr);
 	fflush(stderr);
-#else
-	FILE *out = fopen("\\np-bta.log", "a");
-	fputs(msg, out);
-	fclose(out);
-#endif
 #endif
 }
 
@@ -318,10 +312,10 @@ int bta_api_init(NPNetscapeFuncs *npnf) {
 
 	// get local user store filename
 #ifdef _WINDOWS
-	const char *filename = "betterthanads.dat";
+	const char *filename = "\\BetterThanAds\\betterthanads.dat";
 	char *dir = getenv("APPDATA");
 #else
-	const char *filename = ".betterthanads";
+	const char *filename = "/.betterthanads";
 	char *dir = getenv("HOME");
 #endif
 	int len = strlen(dir)+strlen(filename)+10;
@@ -335,7 +329,7 @@ int bta_api_init(NPNetscapeFuncs *npnf) {
 		return 0;
 	}
 
-	sprintf(BTA_DATAFILE, "%s/%s", dir, filename);
+	sprintf(BTA_DATAFILE, "%s%s", dir, filename);
 	logmsg("data stored in: ");
 	logmsg(BTA_DATAFILE);
 	logmsg("\n");
@@ -471,6 +465,16 @@ void bta_api_set_user(NPP inst, const char *user_token) {
 
 	// truncate/create data file
 	bta_fp = fopen(BTA_DATAFILE, "w");
+#ifdef _WINDOWS
+	if( !bta_fp ) {
+		char *p = strrchr(BTA_DATAFILE, '\\');
+		*p=0;
+		_mkdir(BTA_DATAFILE);
+		*p='\\';
+		bta_fp = fopen(BTA_DATAFILE, "w");
+	}
+
+#endif
 	if( !bta_fp ) {
 		logmsg("error opening datafile\n");
 		return;
