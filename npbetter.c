@@ -26,6 +26,7 @@
 #include "bta.h"
 
 static NPNetscapeFuncs *npnfuncs = NULL;
+int bta_initialized=0;
 
 void logmsg(const char *msg) {
 #ifdef DEBUG
@@ -136,6 +137,8 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, 
 	float price=0.0;
 	int i=0, action=0;
 
+	if( !bta_initialized ) return NPERR_GENERIC_ERROR;
+
 	for(i=0; i<argc; i++) {
 			if( strcmp(argn[i], "user")==0 ) {
 				site_token=argv[i];
@@ -168,7 +171,7 @@ static NPError new_instance(NPMIMEType pluginType, NPP instance, uint16_t mode, 
 
 	}
 
-	if( site_token==NULL )
+	if( site_token==NULL || bta_initialized!=2 )
 		return NPERR_GENERIC_ERROR;
 
 	if( action==0 ) { 
@@ -277,12 +280,17 @@ NPError OSCALL NP_Initialize(NPNetscapeFuncs *npnf) {
 		return NPERR_INVALID_FUNCTABLE_ERROR;
 	}
 
-	bta_api_init(npnfuncs);
+	if( !bta_api_init(npnfuncs) ) {
+		return NPERR_GENERIC_ERROR;
+	}
 	return NPERR_NO_ERROR;
 }
 
 NPError OSCALL NP_Shutdown() {
-	bta_api_shutdown();
+	logmsg("NP_shutdown()\n");
+	if( bta_initialized )  
+		bta_api_shutdown();
+	bta_initialized=0;
 	return NPERR_NO_ERROR;
 }
 
@@ -337,15 +345,17 @@ int bta_api_init(NPNetscapeFuncs *npnf) {
 	//try to open the datafile (dont want to create yet)
 	bta_fp = fopen(BTA_DATAFILE, "r+");
 	if( !bta_fp ) {
-		bta_free(bta_pv_buf);
-		bta_free(BTA_DATAFILE);
+		//bta_free(bta_pv_buf);
+		//bta_free(BTA_DATAFILE);
+		bta_initialized=1;
 		return 0;
 	}
 
 	// read in the user id
 	if( fscanf(bta_fp, "user=%19s", bta_user) != 1 ) {
-		bta_free(bta_pv_buf);
-		bta_free(BTA_DATAFILE);
+		//bta_free(bta_pv_buf);
+		//bta_free(BTA_DATAFILE);
+		bta_initialized=1;
 		fclose(bta_fp);
 		return 0;
 	}
@@ -362,6 +372,7 @@ int bta_api_init(NPNetscapeFuncs *npnf) {
 	fclose(bta_fp);
 
 	bta_sys_init();
+	bta_initialized=2;
 	return 1;
 }
 
@@ -374,11 +385,13 @@ BTA_SYS_WINDOW bta_api_get_parent(NPP inst) {
 void bta_api_shutdown() {
 	bta_sys_close();
 
-	// write the cached datastore back to disk
-	FILE *bta_fp = fopen(BTA_DATAFILE, "r+");
-	fseek(bta_fp, 0, SEEK_SET);
-	fputs(bta_pv_buf, bta_fp);
-	fclose(bta_fp);
+	if( bta_initialized==2 ) {
+		// write the cached datastore back to disk
+		FILE *bta_fp = fopen(BTA_DATAFILE, "r+");
+		fseek(bta_fp, 0, SEEK_SET);
+		fputs(bta_pv_buf, bta_fp);
+		fclose(bta_fp);
+	}
 
 	// release mem
 	bta_free(bta_pv_buf);
